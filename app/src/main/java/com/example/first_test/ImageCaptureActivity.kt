@@ -72,7 +72,9 @@ class ImageCaptureActivity : ComponentActivity() {
     fun MainContent() {
         var bitmap by remember { mutableStateOf<Bitmap?>(null) }
         var className by remember { mutableStateOf("") }
+        var estadoAnalisis by remember { mutableStateOf("Esperando imagen...") }
         val context = LocalContext.current
+        //val scope = rememberCoroutineScope()
 
         val takePictureLauncher =
             rememberLauncherForActivityResult(
@@ -81,12 +83,12 @@ class ImageCaptureActivity : ComponentActivity() {
             if (success) {
                 photoUri?.let {
                     bitmap = BitmapFactory.decodeStream(context.contentResolver.openInputStream(it))
-                    processImage(bitmap, context) { result ->
-                        className = result
-                    }
+                    //processImage(bitmap, context) { result ->
+                    //    className = result
+                    //}
                 }
             } else {
-                Toast.makeText(context, "Failed to take picture", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "No se pudo tomar la imagen", Toast.LENGTH_SHORT).show()
             }
         }
 
@@ -98,7 +100,7 @@ class ImageCaptureActivity : ComponentActivity() {
                 photoUri = createImageFileUri(context)
                 takePictureLauncher.launch(photoUri)
             } else {
-                Toast.makeText(context, "Camera permission denied", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "No se pudo obtener permiso para utilizar la camara", Toast.LENGTH_SHORT).show()
             }
         }
 
@@ -121,7 +123,7 @@ class ImageCaptureActivity : ComponentActivity() {
                     }
                 }
             }) {
-                BasicText("Take Picture")
+                BasicText("Tomar Foto")
             }
 
             bitmap?.let {
@@ -140,10 +142,30 @@ class ImageCaptureActivity : ComponentActivity() {
                 modifier = Modifier.padding(top = 16.dp),
                 color = Color.Green
             )
+            Text(
+                text = estadoAnalisis,
+                modifier = Modifier.padding(top = 16.dp),
+                color = Color.Green
+            )
+
+            Button(onClick = {
+                if (bitmap != null){
+                    estadoAnalisis = "Analizando..."
+                    processImage(bitmap) { result ->
+                    className = result
+                    }
+                    estadoAnalisis = "Listo"
+                }
+                else{
+                    estadoAnalisis = "No hay imagen"
+                }
+            }) {
+                BasicText("Analizar Imagen")
+            }
         }
     }
 
-    private fun processImage(bitmap: Bitmap?, context: Context, callback: (String) -> Unit) {
+    private fun processImage(bitmap: Bitmap?, callback: (String) -> Unit) {
         bitmap?.let {
             val inputTensor = TensorImageUtils.bitmapToFloat32Tensor(
                 it, TensorImageUtils.TORCHVISION_NORM_MEAN_RGB, TensorImageUtils.TORCHVISION_NORM_STD_RGB

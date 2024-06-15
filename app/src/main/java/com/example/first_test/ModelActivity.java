@@ -28,7 +28,7 @@ public class ModelActivity extends AppCompatActivity {
   @Override
   protected void onCreate(Bundle savedInstanceState) {
     super.onCreate(savedInstanceState);
-    setContentView(R.layout.activity_main);
+    setContentView(R.layout.old_activity_main);
 
     Bitmap bitmap = null;
     Module module = null;
