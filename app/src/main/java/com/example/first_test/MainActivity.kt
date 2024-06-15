@@ -90,12 +90,13 @@ fun NavigateButton(modifier: Modifier = Modifier) {
     Box(modifier = modifier) {
         Button(
             onClick = {
-                val intent = Intent(context, ModelActivity::class.java)
+                //val intent = Intent(context, ModelActivity::class.java)
+                val intent = Intent(context, ImageCaptureActivity::class.java)
                 startActivity(context, intent, null)
             },
             modifier = Modifier.padding(16.dp)
         ) {
-            Text(text = "Go to Second Activity")
+            Text(text = "Jugar con mobilenet V2")
         }
     }
 }
