@@ -100,6 +100,8 @@ class YoloActivity : ComponentActivity() {
         First_testTheme {
 
             var bitmap by remember { mutableStateOf<Bitmap?>(null) }
+            var paintedBitmap by remember { mutableStateOf<Bitmap?>(null) }
+            var detected by remember  { mutableStateOf(false) }
 
             val context = LocalContext.current
 
@@ -156,13 +158,21 @@ class YoloActivity : ComponentActivity() {
                         .offset(x = 30.dp)
                 ) {
                     Button(
-                        onClick = { imagePicker.launch("image/*") }
+                        onClick = {
+                            imagePicker.launch("image/*")
+                            detected = false
+                        }
                     ) {
                         Text(text = "Elegir \nImagen")
                     }
                     Spacer(modifier = Modifier.width(16.dp))
                     Button(
-                        onClick = { bitmap?.let { detectObjects(it) } }
+                        onClick = {
+                            bitmap?.let {
+                                paintedBitmap = detectObjectsAndPaint(it)
+                                detected = true
+                            }
+                        }
                     ) {
                         Text(text = "Analizar")
                     }
@@ -173,6 +183,7 @@ class YoloActivity : ComponentActivity() {
                                 ContextCompat.checkSelfPermission(context, "Manifest.permission.CAMERA") -> {
                                     photoUri = createImageFileUri(context)
                                     takePictureLauncher.launch(photoUri)
+                                    detected = false
                                 }
                                 else -> {
                                     requestPermissionLauncher.launch(android.Manifest.permission.CAMERA)
@@ -185,22 +196,38 @@ class YoloActivity : ComponentActivity() {
                 }
                 Spacer(modifier = Modifier.height(16.dp))
 
-                bitmap?.let {
-                    Image(
-                        bitmap = it.asImageBitmap(),
-                        contentDescription = null,
-                        modifier = Modifier
-                            //.size(512.dp)
-                            .fillMaxWidth()
-                            .clickable {
-                                detectObjects(it)
-                            }
-                    )
+                if (detected){
+                    paintedBitmap?.let {
+                        Image(
+                            bitmap = it.asImageBitmap(),
+                            contentDescription = null,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    detected = false
+                                }
+                        )
+                    }
+                }
+                else{
+                    bitmap?.let {
+                        Image(
+                            bitmap = it.asImageBitmap(),
+                            contentDescription = null,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    paintedBitmap = detectObjectsAndPaint(it)
+                                    detected = true
+                                }
+                        )
+                    }
                 }
             }
         }
     }
 
+    /*
     private fun detectObjects(bitmap: Bitmap) {
         val resizedBitmap = Bitmap.createScaledBitmap(bitmap, 640, 640, true)
         val inputTensor = TensorImageUtils.bitmapToFloat32Tensor(resizedBitmap, floatArrayOf(0.0f, 0.0f, 0.0f), floatArrayOf(1.0f, 1.0f, 1.0f))
@@ -212,8 +239,23 @@ class YoloActivity : ComponentActivity() {
         val imgScaleY = bitmap.height / 640.0f
 
         val results = outputsToNMSPredictions(outputs, imgScaleX, imgScaleY)
-        //val results = outputsToNMSPredictions(outputTensor, imgScaleX, imgScaleY)
+
         showDetectionResults(results, bitmap)
+    }
+    */
+    private fun detectObjectsAndPaint(bitmap: Bitmap) : Bitmap? {
+        val resizedBitmap = Bitmap.createScaledBitmap(bitmap, 640, 640, true)
+        val inputTensor = TensorImageUtils.bitmapToFloat32Tensor(resizedBitmap, floatArrayOf(0.0f, 0.0f, 0.0f), floatArrayOf(1.0f, 1.0f, 1.0f))
+        val outputTuple = module?.forward(IValue.from(inputTensor))?.toTuple() ?: return null
+        val outputTensor = outputTuple[0].toTensor()
+        val outputs = outputTensor.dataAsFloatArray
+
+        val imgScaleX = bitmap.width / 640.0f
+        val imgScaleY = bitmap.height / 640.0f
+
+        val results = outputsToNMSPredictions(outputs, imgScaleX, imgScaleY)
+
+        return paintDetectionResults(results, bitmap)
     }
 
     private fun outputsToNMSPredictions(outputs: FloatArray, imgScaleX: Float, imgScaleY: Float): List<Result> {
@@ -396,6 +438,36 @@ class YoloActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    private fun paintDetectionResults(results: List<Result>, bitmap: Bitmap) : Bitmap {
+
+        val scale : Float = bitmap.width / 1000f // bitmap.width = 900 ~ 3000
+
+        val mutableBitmap = bitmap.copy(Bitmap.Config.ARGB_8888, true)
+        val canvas = Canvas(mutableBitmap)
+        val paint = Paint().apply {
+            color = android.graphics.Color.RED
+            strokeWidth = 2.0f * scale
+            style = Paint.Style.STROKE
+        }
+        val textPaint = Paint().apply {
+            color = android.graphics.Color.GREEN
+            textSize = 30f * scale //30f
+            style = Paint.Style.FILL
+        }
+
+        for (result in results) {
+            // Cuadro
+            canvas.drawRect(result.rect, paint)
+            // Texto
+            val text = "${result.className} (${result.score})"
+            val textX = result.rect.left
+            val textY = result.rect.bottom + textPaint.textSize
+            canvas.drawText(text, textX, textY, textPaint)
+        }
+
+        return mutableBitmap
     }
 
     data class Result(val classIndex: Int, val className: String, val score: Float, val rect: RectF)
