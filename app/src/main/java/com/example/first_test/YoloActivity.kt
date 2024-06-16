@@ -245,11 +245,12 @@ class YoloActivity : ComponentActivity() {
                 results.add(Result(classId, classes?.get(classId) ?: "Unknown", score, rect))
             }
         }
+        val scale : Float = (imgScaleX * 640f) / 1000f // bitmap.width = 900 ~ 3000
         //return results
-        return filterResults(results, 20.0f)
+        return filterResults(results, 25.0f * scale)
     }
 
-    fun argmax(array: FloatArray): Int {
+    private fun argmax(array: FloatArray): Int {
         var maxIdx = 0
         var maxValue = array[0]
         for (i in array.indices) {
@@ -261,7 +262,8 @@ class YoloActivity : ComponentActivity() {
         return maxIdx
     }
 
-    fun filterResults(results: MutableList<Result>, threshold: Float): List<Result> {
+    /*
+    private fun filterResults(results: MutableList<Result>, threshold: Float): List<Result> {
 
         val filteredResults = mutableListOf<Result>()
 
@@ -285,7 +287,38 @@ class YoloActivity : ComponentActivity() {
 
         return filteredResults
     }
-    fun areRectsClose(rect1: RectF, rect2: RectF, threshold: Float): Boolean {
+
+    */
+    private fun filterResults(results: MutableList<Result>, threshold: Float): List<Result> {
+        val filteredResults = mutableListOf<Result>()
+
+        for (result in results) {
+            var shouldAddResult = true
+            val iterator = filteredResults.iterator()
+
+            while (iterator.hasNext()) {
+                val filteredResult = iterator.next()
+
+                if (result.classIndex == filteredResult.classIndex
+                    && areRectsClose(result.rect, filteredResult.rect, threshold)) {
+
+                    if (result.score > filteredResult.score) {
+                        iterator.remove()
+                    } else {
+                        shouldAddResult = false
+                    }
+                }
+            }
+
+            if (shouldAddResult) {
+                filteredResults.add(result)
+            }
+        }
+
+        return filteredResults
+    }
+
+    private fun areRectsClose(rect1: RectF, rect2: RectF, threshold: Float): Boolean {
         val X1 = rect1.centerX()
         val Y1 = rect1.centerY()
         val X2 = rect2.centerX()
@@ -300,18 +333,19 @@ class YoloActivity : ComponentActivity() {
         setContent {
             First_testTheme {
                 var detectedBitmap by remember { mutableStateOf<Bitmap?>(null) }
+                val scale : Float = bitmap.width / 1000f // bitmap.width = 900 ~ 3000
 
                 LaunchedEffect(Unit) {
                     val mutableBitmap = bitmap.copy(Bitmap.Config.ARGB_8888, true)
                     val canvas = Canvas(mutableBitmap)
                     val paint = Paint().apply {
                         color = android.graphics.Color.RED
-                        strokeWidth = 2.0f
+                        strokeWidth = 2.0f * scale
                         style = Paint.Style.STROKE
                     }
                     val textPaint = Paint().apply {
                         color = android.graphics.Color.GREEN
-                        textSize = 60f //30f
+                        textSize = 30f * scale //30f
                         style = Paint.Style.FILL
                     }
 
