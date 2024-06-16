@@ -127,6 +127,7 @@ class YoloActivity : ComponentActivity() {
                             //}
                             val matrix = Matrix().apply { postRotate(90f) }
                             bitmap = Bitmap.createBitmap(auxBitmap, 0, 0, auxBitmap.width, auxBitmap.height, matrix, true)
+                            detected = false
                         }
                     } else {
                         Toast.makeText(context, "No se pudo tomar la imagen", Toast.LENGTH_SHORT).show()
