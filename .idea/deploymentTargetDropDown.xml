@@ -2,32 +2,19 @@
 <project version="4">
   <component name="deploymentTargetDropDown">
     <value>
-      <entry key="GreetingPreview">
-        <State>
-          <targetSelectedWithDropDown>
-            <Target>
-              <type value="QUICK_BOOT_TARGET" />
-              <deviceKey>
-                <Key>
-                  <type value="VIRTUAL_DEVICE_PATH" />
-                  <value value="$USER_HOME$/.config/.android/avd/Medium_Phone_API_24.avd" />
-                </Key>
-              </deviceKey>
-            </Target>
-          </targetSelectedWithDropDown>
-          <timeTargetWasSelectedWithDropDown value="2024-04-15T01:10:21.635702628Z" />
-        </State>
-      </entry>
       <entry key="ImageCaptureActivity">
-        <State />
-      </entry>
-      <entry key="LoadImageFromUrlPreview">
         <State />
       </entry>
       <entry key="MainActivity">
         <State />
       </entry>
       <entry key="ModelActivity">
+        <State />
+      </entry>
+      <entry key="PreviewTokenizerApp">
+        <State />
+      </entry>
+      <entry key="YoloActivity">
         <State />
       </entry>
       <entry key="app">

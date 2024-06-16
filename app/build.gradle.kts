@@ -58,6 +58,7 @@ dependencies {
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
     implementation(libs.androidx.appcompat)
+    implementation(libs.androidx.constraintlayout)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
@@ -70,8 +71,13 @@ dependencies {
     implementation("io.coil-kt:coil-compose:2.2.2")
 
     // Torch
-    implementation("org.pytorch:pytorch_android_lite:1.10.0")
-    implementation("org.pytorch:pytorch_android_torchvision_lite:1.10.0")
+    //implementation("org.pytorch:pytorch_android_lite:1.10.0")
+    //implementation("org.pytorch:pytorch_android_torchvision_lite:1.10.0")
+    implementation("org.pytorch:pytorch_android_lite:2.1.0")
+    implementation("org.pytorch:pytorch_android_torchvision_lite:2.1.0")
+
+    // JSON
+    implementation("com.google.code.gson:gson:2.8.8")
 
     // HTTP
     //implementation("com.github.mezhevikin:http-request-kotlin:0.0.5")

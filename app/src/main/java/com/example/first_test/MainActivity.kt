@@ -6,6 +6,7 @@ package com.example.first_test
 //import androidx.compose.material3.Text
 //import androidx.compose.runtime.Composable
 //import com.github.mezhevikin.httprequest
+import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
@@ -48,6 +49,10 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat.startActivity
 import coil.compose.rememberImagePainter
 import com.example.first_test.ui.theme.First_testTheme
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
+import java.io.InputStreamReader
+import kotlin.reflect.KClass
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -84,19 +89,25 @@ fun GreetingPreview() {
 }
 
 @Composable
-fun NavigateButton(modifier: Modifier = Modifier) {
+fun NavigateButton(
+    modifier: Modifier = Modifier,
+    activity: KClass<out Activity>,
+    text: String
+) {
     val context: Context = LocalContext.current
 
     Box(modifier = modifier) {
         Button(
             onClick = {
                 //val intent = Intent(context, ModelActivity::class.java)
-                val intent = Intent(context, ImageCaptureActivity::class.java)
+                //val intent = Intent(context, ImageCaptureActivity::class.java)
+                //val intent = Intent(context, YoloActivity::class.java)
+                val intent = Intent(context, activity.java)
                 startActivity(context, intent, null)
             },
             modifier = Modifier.padding(16.dp)
         ) {
-            Text(text = "Jugar con mobilenet V2")
+            Text(text)
         }
     }
 }
@@ -141,7 +152,14 @@ fun TextInputScreen() {
                 modifier = Modifier.fillMaxWidth()
             )
             NavigateButton(
-                modifier = Modifier.offset(x=60.dp, y= 330.dp)
+                modifier = Modifier.offset(x = 10.dp, y = 380.dp),
+                activity = ImageCaptureActivity::class,
+                text = "Jugar con mobilenet V2"
+            )
+            NavigateButton(
+                modifier = Modifier.offset(x = 220.dp, y = 300.dp),
+                activity = YoloActivity::class,
+                text = "YOLO"
             )
             Spacer(modifier = Modifier.height(16.dp))
             Text(
@@ -185,7 +203,7 @@ fun ExpandTest() {
             )
             AnimatedVisibility(visible = expanded) {
                 Text(
-                    text = "Gil el que lo lee",
+                    text = "Gil el que lo lea",
                     style = MaterialTheme.typography.bodyLarge,
                     color = Color.Black,
                 )
@@ -201,50 +219,6 @@ fun ExpandedTestPreview() {
         ExpandTest()
     }
 }
-
-/*
-@Composable
-fun BackgroundImageExample() {
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-    ) {
-        Image(
-            painter = painterResource(id = R.drawable.background),
-            contentDescription = null,
-            contentScale = ContentScale.Crop,
-            modifier = Modifier.fillMaxSize()
-        )
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(16.dp),
-            verticalArrangement = Arrangement.Center
-        ) {
-            TextField(
-                value = remember { mutableStateOf("") }.value,
-                onValueChange = {},
-                label = { Text("Enter your name") },
-                modifier = Modifier.fillMaxWidth()
-            )
-            Spacer(modifier = Modifier.height(16.dp))
-            Text(
-                text = "Hello, Compose!",
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onBackground
-            )
-        }
-    }
-}
-
-@Preview(showBackground = true)
-@Composable
-fun BackgroundImageExamplePreview() {
-    First_testTheme {
-        BackgroundImageExample()
-    }
-}
-*/
 
 @Composable
 fun LoadImageFromUrl(imageUrl: String) {
@@ -271,5 +245,74 @@ fun LoadImageFromUrl(imageUrl: String) {
 fun LoadImageFromUrlPreview() {
     First_testTheme {
         LoadImageFromUrl("http://127.0.0.1:8000/static/logo_CELO.png")
+    }
+}
+
+data class VocabEntry(val token: String, val index: Int)
+
+fun loadVocabJson(context: Context, fileName: String): Map<String, Int> {
+    val assetManager = context.assets
+    val inputStream = assetManager.open(fileName)
+    val reader = InputStreamReader(inputStream)
+    val vocabType = object : TypeToken<Map<String, Int>>() {}.type
+    return Gson().fromJson(reader, vocabType)
+}
+
+class Tokenizer(private val vocab: Map<String, Int>) {
+    private val reverseVocab = vocab.entries.associate { it.value to it.key }
+
+    fun tokenize(text: String): List<Int> {
+        return text.toCharArray().map { char ->
+            vocab[char.toString()] ?: vocab["<unk>"]!!
+        }
+    }
+
+    fun detokenize(tokens: List<Int>): String {
+        return tokens.joinToString(" ") { token ->
+            reverseVocab[token] ?: "<unk>"
+        }
+    }
+}
+
+@Composable
+fun TokenizerScreen(tokenizer: Tokenizer) {
+    var inputText by remember { mutableStateOf("") }
+    var tokenizedText by remember { mutableStateOf<List<Int>>(emptyList()) }
+    var detokenizedText by remember { mutableStateOf("") }
+
+    Column(modifier = Modifier.padding(16.dp)) {
+        TextField(
+            value = inputText,
+            onValueChange = { inputText = it },
+            label = { Text("Enter text to tokenize") },
+            modifier = Modifier.fillMaxWidth()
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        Button(onClick = {
+            tokenizedText = tokenizer.tokenize(inputText)
+            detokenizedText = tokenizer.detokenize(tokenizedText)
+        }) {
+            Text("Tokenize and Detokenize")
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+        Text("Tokenized: $tokenizedText")
+        Text("Detokenized: $detokenizedText")
+    }
+}
+
+@Composable
+fun TokenizerApp() {
+    val context = LocalContext.current
+    val vocab by remember { mutableStateOf(loadVocabJson(context, "vocab.json")) }
+    val tokenizer = remember(vocab) { Tokenizer(vocab) }
+
+    TokenizerScreen(tokenizer)
+}
+
+@Preview
+@Composable
+fun PreviewTokenizerApp() {
+    First_testTheme {
+        TokenizerApp()
     }
 }
