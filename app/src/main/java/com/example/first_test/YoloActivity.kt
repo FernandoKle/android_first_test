@@ -32,7 +32,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Button
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -230,22 +229,6 @@ class YoloActivity : ComponentActivity() {
         }
     }
 
-    /*
-    private fun detectObjects(bitmap: Bitmap) {
-        val resizedBitmap = Bitmap.createScaledBitmap(bitmap, 640, 640, true)
-        val inputTensor = TensorImageUtils.bitmapToFloat32Tensor(resizedBitmap, floatArrayOf(0.0f, 0.0f, 0.0f), floatArrayOf(1.0f, 1.0f, 1.0f))
-        val outputTuple = module?.forward(IValue.from(inputTensor))?.toTuple() ?: return
-        val outputTensor = outputTuple[0].toTensor()
-        val outputs = outputTensor.dataAsFloatArray
-
-        val imgScaleX = bitmap.width / 640.0f
-        val imgScaleY = bitmap.height / 640.0f
-
-        val results = outputsToNMSPredictions(outputs, imgScaleX, imgScaleY)
-
-        showDetectionResults(results, bitmap)
-    }
-    */
     private fun detectObjectsAndPaint(bitmap: Bitmap) : Bitmap? {
         val resizedBitmap = Bitmap.createScaledBitmap(bitmap, 640, 640, true)
         val inputTensor = TensorImageUtils.bitmapToFloat32Tensor(resizedBitmap, floatArrayOf(0.0f, 0.0f, 0.0f), floatArrayOf(1.0f, 1.0f, 1.0f))
@@ -290,10 +273,8 @@ class YoloActivity : ComponentActivity() {
                 results.add(Result(classId, classes?.get(classId) ?: "Unknown", score, rect))
             }
         }
-        val scale : Float = (imgScaleX * 640f) / 1000f // bitmap.width = 900 ~ 3000
-        //return results
-        //return filterResultsV2(results, 25.0f * scale)
-        return filterResultsV3(results.sortedByDescending { it.score }, 0.5f ) //* scale
+
+        return filterNMS(results) //* scale
     }
 
     private fun argmax(array: FloatArray): Int {
@@ -308,37 +289,13 @@ class YoloActivity : ComponentActivity() {
         return maxIdx
     }
 
-    /*
-    private fun filterResultsV1(results: MutableList<Result>, threshold: Float): List<Result> {
+    private fun filterNMS(results: List<Result>): List<Result> {
 
+        val sortedResults = results.sortedByDescending { it.score }
         val filteredResults = mutableListOf<Result>()
+        val threshold: Float = 0.5f
 
-        for (result in results) {
-            var isTooClose = false
-
-            for (filteredResult in filteredResults) {
-                if (
-                    result.classIndex == filteredResult.classIndex
-                    && areRectsClose(result.rect, filteredResult.rect, threshold)
-                    ) {
-                    isTooClose = true
-                    break
-                }
-            }
-
-            if (!isTooClose) {
-                filteredResults.add(result)
-            }
-        }
-
-        return filteredResults
-    }
-    */
-    private fun filterResultsV3(results: List<Result>, threshold: Float): List<Result> {
-
-        val filteredResults = mutableListOf<Result>()
-
-        for (result in results) {
+        for (result in sortedResults) {
             var shouldAdd = true
 
             for (filteredResult in filteredResults) {
@@ -372,118 +329,6 @@ class YoloActivity : ComponentActivity() {
         val unionArea = rect1Area + rect2Area - intersectionArea
 
         return if (unionArea > 0) intersectionArea / unionArea else 0f
-    }
-
-    /*
-    private fun filterResultsV2(results: MutableList<Result>, threshold: Float): List<Result> {
-        val filteredResults = mutableListOf<Result>()
-
-        for (result in results) {
-            var shouldAddResult = true
-            val iterator = filteredResults.iterator()
-
-            while (iterator.hasNext()) {
-                val filteredResult = iterator.next()
-
-                if (result.classIndex == filteredResult.classIndex
-                    && areRectsClose(result.rect, filteredResult.rect, threshold)) {
-
-                    if (result.score > filteredResult.score) {
-                        iterator.remove()
-                    } else {
-                        shouldAddResult = false
-                    }
-                }
-            }
-
-            if (shouldAddResult) {
-                filteredResults.add(result)
-            }
-        }
-
-        return filteredResults
-    }
-
-    private fun areRectsClose(rect1: RectF, rect2: RectF, threshold: Float): Boolean {
-        val X1 = rect1.centerX()
-        val Y1 = rect1.centerY()
-        val X2 = rect2.centerX()
-        val Y2 = rect2.centerY()
-
-        val distance = Math.sqrt(((X2 - X1) * (X2 - X1) + (Y2 - Y1) * (Y2 - Y1)).toDouble())
-
-        return distance < threshold
-    }
-
-     */
-
-    private fun showDetectionResults(results: List<Result>, bitmap: Bitmap) {
-        setContent {
-            First_testTheme {
-                var detectedBitmap by remember { mutableStateOf<Bitmap?>(null) }
-                val scale : Float = bitmap.width / 1000f // bitmap.width = 900 ~ 3000
-
-                LaunchedEffect(Unit) {
-                    val mutableBitmap = bitmap.copy(Bitmap.Config.ARGB_8888, true)
-                    val canvas = Canvas(mutableBitmap)
-                    val paint = Paint().apply {
-                        color = android.graphics.Color.RED
-                        strokeWidth = 2.0f * scale
-                        style = Paint.Style.STROKE
-                    }
-                    val textPaint = Paint().apply {
-                        color = android.graphics.Color.GREEN
-                        textSize = 30f * scale //30f
-                        style = Paint.Style.FILL
-                    }
-
-                    for (result in results) {
-                        // Cuadro
-                        canvas.drawRect(result.rect, paint)
-                        // Texto
-                        val text = "${result.className} (${result.score})"
-                        val textX = result.rect.left
-                        val textY = result.rect.bottom + textPaint.textSize
-                        canvas.drawText(text, textX, textY, textPaint)
-                    }
-
-                    detectedBitmap = mutableBitmap
-                }
-
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(Color.White)
-                ) {
-                    /*
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .offset(x = 60.dp)
-                    ) {
-                        Spacer(modifier = Modifier.width(16.dp))
-                        Button(
-                            onClick = { }
-                        ) {
-                            Text(text = "Regresar")
-                        }
-                    }
-                    Spacer(modifier = Modifier.height(16.dp))
-                    */
-
-                    detectedBitmap?.let {
-                        Image(
-                            bitmap = it.asImageBitmap(),
-                            contentDescription = null,
-                            //modifier = Modifier.size(800.dp)
-                            modifier = Modifier.fillMaxSize()
-                        )
-                    }
-                }
-            }
-        }
     }
 
     private fun paintDetectionResults(results: List<Result>, bitmap: Bitmap) : Bitmap {
