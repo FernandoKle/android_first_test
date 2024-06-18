@@ -19,21 +19,28 @@ android {
         vectorDrawables {
             useSupportLibrary = true
         }
+
+        ndk {
+            abiFilters.addAll(listOf("armeabi-v7a", "arm64-v8a"))
+        }
     }
 
     splits {
         abi {
-            isEnable = true
-            reset()
+            //isEnable = true // true para generar por separado
+            //reset()
             // include("armeabi-v7a", "arm64-v8a", "x86", "x86_64")
-            include("armeabi-v7a", "arm64-v8a")
-            isUniversalApk = false
+            //include("armeabi-v7a", "arm64-v8a")
+            //isUniversalApk = false
         }
     }
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
+            isDebuggable = false
+            isJniDebuggable = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }

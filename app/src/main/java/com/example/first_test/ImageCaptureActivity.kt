@@ -54,7 +54,7 @@ class ImageCaptureActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        module = LiteModuleLoader.load(assetFilePath(this, "mobilenet_v3_large.pt"))
+        module = LiteModuleLoader.load(assetFilePath(this, "mobilenet_v3_small.pt"))
 
         setContent {
             First_testTheme {

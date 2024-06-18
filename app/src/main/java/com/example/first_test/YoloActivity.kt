@@ -54,6 +54,8 @@ import java.io.BufferedReader
 import java.io.File
 import java.io.IOException
 import java.io.InputStreamReader
+import kotlin.math.max
+import kotlin.math.min
 
 class YoloActivity : ComponentActivity() {
     private var module: Module? = null
@@ -290,7 +292,8 @@ class YoloActivity : ComponentActivity() {
         }
         val scale : Float = (imgScaleX * 640f) / 1000f // bitmap.width = 900 ~ 3000
         //return results
-        return filterResults(results, 25.0f * scale)
+        //return filterResultsV2(results, 25.0f * scale)
+        return filterResultsV3(results.sortedByDescending { it.score }, 0.5f ) //* scale
     }
 
     private fun argmax(array: FloatArray): Int {
@@ -306,7 +309,7 @@ class YoloActivity : ComponentActivity() {
     }
 
     /*
-    private fun filterResults(results: MutableList<Result>, threshold: Float): List<Result> {
+    private fun filterResultsV1(results: MutableList<Result>, threshold: Float): List<Result> {
 
         val filteredResults = mutableListOf<Result>()
 
@@ -330,9 +333,49 @@ class YoloActivity : ComponentActivity() {
 
         return filteredResults
     }
-
     */
-    private fun filterResults(results: MutableList<Result>, threshold: Float): List<Result> {
+    private fun filterResultsV3(results: List<Result>, threshold: Float): List<Result> {
+
+        val filteredResults = mutableListOf<Result>()
+
+        for (result in results) {
+            var shouldAdd = true
+
+            for (filteredResult in filteredResults) {
+                if (result.classIndex == filteredResult.classIndex
+                    && getIoU(result.rect, filteredResult.rect) > threshold)
+                {
+                    shouldAdd = false
+                    break
+                }
+            }
+
+            if (shouldAdd) {
+                filteredResults.add(result)
+            }
+        }
+
+        return filteredResults
+    }
+
+    fun getIoU(rect1: RectF, rect2: RectF): Float {
+        val intersectionLeft = max(rect1.left, rect2.left)
+        val intersectionTop = max(rect1.top, rect2.top)
+        val intersectionRight = min(rect1.right, rect2.right)
+        val intersectionBottom = min(rect1.bottom, rect2.bottom)
+
+        val intersectionArea = max(0f, intersectionRight - intersectionLeft) * max(0f, intersectionBottom - intersectionTop)
+
+        val rect1Area = (rect1.right - rect1.left) * (rect1.bottom - rect1.top)
+        val rect2Area = (rect2.right - rect2.left) * (rect2.bottom - rect2.top)
+
+        val unionArea = rect1Area + rect2Area - intersectionArea
+
+        return if (unionArea > 0) intersectionArea / unionArea else 0f
+    }
+
+    /*
+    private fun filterResultsV2(results: MutableList<Result>, threshold: Float): List<Result> {
         val filteredResults = mutableListOf<Result>()
 
         for (result in results) {
@@ -371,6 +414,8 @@ class YoloActivity : ComponentActivity() {
 
         return distance < threshold
     }
+
+     */
 
     private fun showDetectionResults(results: List<Result>, bitmap: Bitmap) {
         setContent {
