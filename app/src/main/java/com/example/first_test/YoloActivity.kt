@@ -1,6 +1,7 @@
 package com.example.first_test
 
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -17,6 +18,11 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.animateColor
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -28,7 +34,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -42,6 +50,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import com.example.first_test.ui.theme.First_testTheme
@@ -55,6 +64,7 @@ import java.io.IOException
 import java.io.InputStreamReader
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.system.measureTimeMillis
 
 class YoloActivity : ComponentActivity() {
     private var module: Module? = null
@@ -68,10 +78,29 @@ class YoloActivity : ComponentActivity() {
         }
 
         try {
+            /** Resultados
+            // El modelo cuantizado perdio en velocidad por poco
+            // habria que comparar el uso de memoria
+             **/
+
+            // 1280 ms en tel de fer
             module = LiteModuleLoader.load(assetFilePath(this, "yolov5s.torchscript"))
+
+            // 1320 ms en tel de fer
+            // module = LiteModuleLoader.load(assetFilePath(this, "yolov5s-int8.torchscript"))
+
+            // 2750 ms en tel de fer
+            // module = LiteModuleLoader.load(assetFilePath(this, "yolov5m.torchscript"))
+
+            // 2750 ms en tel de fer
+            // module = LiteModuleLoader.load(assetFilePath(this, "yolov5m-int8.torchscript"))
+
             BufferedReader(InputStreamReader(assets.open("classes.txt"))).use { br ->
                 classes = br.readLines()
             }
+
+            // Hilos a utilizar --> Crash, no tocar
+            //PyTorchAndroid.setNumThreads(2)
         } catch (e: Exception) {
             Log.e("Object Detection", "Error loading model or classes", e)
         }
@@ -94,6 +123,37 @@ class YoloActivity : ComponentActivity() {
             Log.e("PytorchHelloWorld", "Error process asset $assetName to file path")
         }
         return file.absolutePath
+    }
+
+
+    @Composable
+    fun RainbowButton(onClick: () -> Unit) {
+        val colors = listOf(
+            Color.Red,
+            Color.Yellow,
+            Color.Green,
+            Color.Blue,
+        )
+
+        val infiniteTransition = rememberInfiniteTransition()
+        val color by infiniteTransition.animateColor(
+            initialValue = colors.first(),
+            targetValue = colors.last(),
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = 2000),
+                repeatMode = RepeatMode.Restart
+            )
+        )
+
+        Button(
+            onClick = onClick,
+            modifier = Modifier
+                .background(color, shape = RoundedCornerShape(12.dp))
+                .padding(8.dp),
+            shape = RoundedCornerShape(12.dp)
+        ) {
+            Text(text = "LIVE", fontSize = 16.sp)
+        }
     }
 
     @Composable
@@ -163,20 +223,31 @@ class YoloActivity : ComponentActivity() {
                         onClick = {
                             imagePicker.launch("image/*")
                             detected = false
-                        }
+                        },
+                        //modifier = Modifier.offset(x=(-10.dp))
                     ) {
                         Text(text = "Elegir \nImagen")
                     }
                     Spacer(modifier = Modifier.width(16.dp))
-                    Button(
-                        onClick = {
-                            bitmap?.let {
-                                paintedBitmap = detectObjectsAndPaint(it)
-                                detected = true
+                    Column {
+                        Button(
+                            onClick = {
+                                bitmap?.let {
+                                    val time = measureTimeMillis {
+                                        paintedBitmap = detectObjectsAndPaint(it)
+                                    }
+                                    detected = true
+                                    Log.d("INFERENCIA", "Tomo: $time [ms]")
+                                }
                             }
+                        ) {
+                            Text(text = "Analizar")
                         }
-                    ) {
-                        Text(text = "Analizar")
+                        Spacer(modifier = Modifier.height(16.dp))
+                        RainbowButton {
+                            val intent = Intent(context, RealTimeDetection::class.java)
+                            ContextCompat.startActivity(context, intent, null)
+                        }
                     }
                     Spacer(modifier = Modifier.width(16.dp))
                     Button(
@@ -191,7 +262,8 @@ class YoloActivity : ComponentActivity() {
                                     requestPermissionLauncher.launch(android.Manifest.permission.CAMERA)
                                 }
                             }
-                        }
+                        },
+                        //modifier = Modifier.offset(x=(-10.dp))
                     ) {
                         Text(text = "Tomar \nFoto")
                     }
@@ -219,8 +291,11 @@ class YoloActivity : ComponentActivity() {
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clickable {
-                                    paintedBitmap = detectObjectsAndPaint(it)
+                                    val time = measureTimeMillis {
+                                        paintedBitmap = detectObjectsAndPaint(it)
+                                    }
                                     detected = true
+                                    Log.d("INFERENCIA", "Tomo: $time [ms]")
                                 }
                         )
                     }
@@ -229,7 +304,7 @@ class YoloActivity : ComponentActivity() {
         }
     }
 
-    private fun detectObjectsAndPaint(bitmap: Bitmap) : Bitmap? {
+    fun detectObjectsAndPaint(bitmap: Bitmap) : Bitmap? {
         val resizedBitmap = Bitmap.createScaledBitmap(bitmap, 640, 640, true)
         val inputTensor = TensorImageUtils.bitmapToFloat32Tensor(resizedBitmap, floatArrayOf(0.0f, 0.0f, 0.0f), floatArrayOf(1.0f, 1.0f, 1.0f))
         val outputTuple = module?.forward(IValue.from(inputTensor))?.toTuple() ?: return null

@@ -53,6 +53,7 @@ android {
     }
     buildFeatures {
         compose = true
+        mlModelBinding = true
     }
     composeOptions {
         kotlinCompilerExtensionVersion = "1.5.1"
@@ -76,6 +77,12 @@ dependencies {
     implementation(libs.androidx.material3)
     implementation(libs.androidx.appcompat)
     implementation(libs.androidx.constraintlayout)
+    implementation(libs.androidx.camera.view)
+    implementation(libs.androidx.camera.lifecycle)
+    //implementation(libs.androidx.camera.core)
+    //implementation(libs.androidx.camera.camera2)
+    implementation("androidx.camera:camera-core") //:1.0.0
+    implementation("androidx.camera:camera-camera2") //:1.0.0
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
@@ -83,6 +90,12 @@ dependencies {
     androidTestImplementation(libs.androidx.ui.test.junit4)
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
+
+    // Tensorflow
+    implementation(libs.tensorflow.lite.support)
+    implementation(libs.tensorflow.lite.metadata)
+    implementation(libs.tensorflow.lite.gpu)
+    //implementation("org.tensorflow:tensorflow-lite-task-vision") //:0.4.0
 
     // image from URL ?
     implementation("io.coil-kt:coil-compose:2.2.2")
@@ -92,6 +105,8 @@ dependencies {
     //implementation("org.pytorch:pytorch_android_torchvision_lite:1.10.0")
     implementation("org.pytorch:pytorch_android_lite:2.1.0")
     implementation("org.pytorch:pytorch_android_torchvision_lite:2.1.0")
+    //implementation("pkg:maven/org.pytorch/torchvision_ops@0.14.0")
+    //implementation("org.pytorch:torchvision_ops:0.14.0")
 
     // JSON
     implementation("com.google.code.gson:gson:2.8.8")
