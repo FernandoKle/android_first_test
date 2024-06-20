@@ -1,12 +1,17 @@
 package com.example.first_test
 
 import android.Manifest
+import android.content.Context
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.RectF
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
 import android.os.Bundle
 import android.util.Log
 import android.view.View
@@ -53,6 +58,7 @@ import java.io.InputStreamReader
 import java.util.concurrent.Executors
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.pow
 import kotlin.system.measureTimeMillis
 
 //import org.tensorflow.lite.task.core.BaseOptions
@@ -60,10 +66,16 @@ import kotlin.system.measureTimeMillis
 //import org.tensorflow.lite.task.vision.detector.ObjectDetector
 
 data class Result(val classIndex: Int, val className: String, val score: Float, val rect: RectF)
-class RealTimeDetection : ComponentActivity() {
+class RealTimeDetection : ComponentActivity(), SensorEventListener {
 
     private var module: Module? = null
     private var classes: List<String>? = null
+    private lateinit var sensorManager: SensorManager
+    private var sensorAccel: Sensor? = null
+    private var accel = floatArrayOf(0f , 0f , 0f) // [ M / s^2 ]
+    private var gravity = floatArrayOf(0f , 0f , 0f)
+
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
@@ -94,10 +106,73 @@ class RealTimeDetection : ComponentActivity() {
 
             // Hilos a utilizar --> Crash, no tocar
             //PyTorchAndroid.setNumThreads(2)
-        } catch (e: Exception) {
+        }
+        catch (e: Exception) {
             Log.e("Object Detection", "Error loading model or classes", e)
         }
+
+        try {
+            sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
+            sensorAccel = if (sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER) != null) {
+                // Success! There's an accelerometer.
+                Log.d("Sensor", "Accelerometro iniciado")
+                sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+            }
+            else {
+                // Failure! No accelerometer.
+                null
+            }
+
+        }
+        catch (e: Exception) {
+            Log.e("SENSOR", "Error inicializando sensores", e)
+        }
     }
+
+    // Nuevo valor para los sensores
+    override fun onSensorChanged(event: SensorEvent) {
+        // Pasa altos
+        // alpha is calculated as t / (t + dT)
+        // with t, the low-pass filter's time-constant
+        // and dT, the event delivery rate
+
+        val alpha = 0.8f;
+
+        gravity[0] = alpha * gravity[0] + (1 - alpha) * event.values[0];
+        gravity[1] = alpha * gravity[1] + (1 - alpha) * event.values[1];
+        gravity[2] = alpha * gravity[2] + (1 - alpha) * event.values[2];
+
+        accel[0] = event.values[0] - gravity[0];
+        accel[1] = event.values[1] - gravity[1];
+        accel[2] = event.values[2] - gravity[2];
+
+        // Sin filtro
+
+        //accel[0] = event.values[0]
+        //accel[1] = event.values[1]
+        //accel[2] = event.values[2]
+
+        //Log.d("SENSOR", "Accelerometro actualizado")
+    }
+
+    // Cambio de precision
+    override fun onAccuracyChanged(sensor: Sensor, accuracy: Int) {
+        // Do something here if sensor accuracy changes.
+    }
+
+    // https://developer.android.com/develop/sensors-and-location/sensors/sensors_overview
+    override fun onResume() {
+        super.onResume()
+        sensorAccel?.also { light ->
+            sensorManager.registerListener(this, light, SensorManager.SENSOR_DELAY_NORMAL)
+        }
+    }
+
+    override fun onPause() {
+        super.onPause()
+        sensorManager.unregisterListener(this)
+    }
+
 
     @Composable
     fun MyApp() {
@@ -178,8 +253,9 @@ class RealTimeDetection : ComponentActivity() {
             }
 
         }
-        Log.d("INFORMACION", "Bucle de MAIN UI")
-        // END MAIN UI
+        //Log.d("INFORMACION", "Bucle de MAIN UI")
+
+    // END MAIN UI
     }
 
     @Composable
@@ -272,6 +348,14 @@ class RealTimeDetection : ComponentActivity() {
     }
 
     fun detectObjectsAndPaint(bitmap: Bitmap) : Bitmap? {
+
+        // No procesar si el dispositivo se esta moviendo
+        val accelMag = kotlin.math.sqrt(accel[0].pow(2) + accel[1].pow(2) + accel[2].pow(2))
+        Log.d("SENSOR", "accelMag: $accelMag [M/s^2]")
+        if (accelMag >= 0.25){
+            return bitmap
+        }
+
         val resizedBitmap = Bitmap.createScaledBitmap(bitmap, 640, 640, true)
         val inputTensor = TensorImageUtils.bitmapToFloat32Tensor(resizedBitmap, floatArrayOf(0.0f, 0.0f, 0.0f), floatArrayOf(1.0f, 1.0f, 1.0f))
         val outputTuple = module?.forward(IValue.from(inputTensor))?.toTuple() ?: return null
