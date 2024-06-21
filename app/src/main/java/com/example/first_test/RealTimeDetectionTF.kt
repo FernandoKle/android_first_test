@@ -28,6 +28,7 @@ import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -42,17 +43,19 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
-import com.example.first_test.ModelActivity.assetFilePath
-import org.pytorch.IValue
-import org.pytorch.LiteModuleLoader
-import org.pytorch.Module
-import org.pytorch.torchvision.TensorImageUtils
+import com.example.first_test.ml.Yolov5sFp16NoNms
+import org.tensorflow.lite.support.common.ops.NormalizeOp
+import org.tensorflow.lite.support.image.ImageProcessor
+import org.tensorflow.lite.support.image.TensorImage
+import org.tensorflow.lite.support.image.ops.ResizeOp
+import org.tensorflow.lite.support.model.Model
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.util.concurrent.Executors
@@ -65,16 +68,18 @@ import kotlin.system.measureTimeMillis
 //import org.tensorflow.lite.task.vision.detector.Detection
 //import org.tensorflow.lite.task.vision.detector.ObjectDetector
 
-data class Result(val classIndex: Int, val className: String, val score: Float, val rect: RectF)
-class RealTimeDetection : ComponentActivity(), SensorEventListener {
+class RealTimeDetectionTF : ComponentActivity(), SensorEventListener {
 
-    private var module: Module? = null
+    private lateinit var module: Yolov5sFp16NoNms
+    //private lateinit var module: Yolov5sInt8
+
     private var classes: List<String>? = null
+    private lateinit var processor: ImageProcessor
+
     private lateinit var sensorManager: SensorManager
     private var sensorAccel: Sensor? = null
     private var accel = floatArrayOf(0f , 0f , 0f) // [ M / s^2 ]
     private var gravity = floatArrayOf(0f , 0f , 0f)
-
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -83,29 +88,56 @@ class RealTimeDetection : ComponentActivity(), SensorEventListener {
         }
 
         try {
-            /** Resultados
-            // El modelo cuantizado perdio en velocidad por poco
-            // habria que comparar el uso de memoria
-             **/
+            /** Initialization */
 
-            // 1280 ms en tel de fer
-            module = LiteModuleLoader.load(assetFilePath(this, "yolov5s.torchscript"))
+            processor = ImageProcessor.Builder()
+                .add(ResizeOp(640, 640, ResizeOp.ResizeMethod.NEAREST_NEIGHBOR))
+                .add(NormalizeOp(0f, 255f)) // 0~255 a 0~1 ==> Hace: (valor - mean) / stddev
+                .build()
 
-            // 1320 ms en tel de fer
-            // module = LiteModuleLoader.load(assetFilePath(this, "yolov5s-int8.torchscript"))
+            // CPU y F16
+            // 820 ms con 5 hilos y 900 con 4
+            // en tel de fer
+            Log.i("MODEL", "Cargando Modelo")
+            try {
+                val builder = Model.Options.Builder()
+                    .setDevice(Model.Device.GPU)
+                    .setNumThreads(4)
+                    .build()
 
-            // 2750 ms en tel de fer
-            // module = LiteModuleLoader.load(assetFilePath(this, "yolov5m.torchscript"))
+                module = Yolov5sFp16NoNms.newInstance(this, builder)
 
-            // 2750 ms en tel de fer
-            // module = LiteModuleLoader.load(assetFilePath(this, "yolov5m-int8.torchscript"))
+                Log.i("MODEL", "Utilizando GPU")
 
+            }
+            catch (e: Exception){
+                try {
+                    val builder = Model.Options.Builder()
+                        .setDevice(Model.Device.NNAPI)
+                        .setNumThreads(4)
+                        .build()
+
+                    module = Yolov5sFp16NoNms.newInstance(this, builder)
+
+                    Log.i("MODEL", "Utilizando NNAPI")
+                }
+                catch (e: Exception){
+                    val builder = Model.Options.Builder()
+                        .setDevice(Model.Device.CPU)
+                        .setNumThreads(4)
+                        .build()
+
+                    module = Yolov5sFp16NoNms.newInstance(this, builder)
+
+                    Log.i("MODEL", "Utilizando CPU")
+                }
+
+            }
+
+            // Cargar clases
             BufferedReader(InputStreamReader(assets.open("classes.txt"))).use { br ->
                 classes = br.readLines()
             }
-
-            // Hilos a utilizar --> Crash, no tocar
-            //PyTorchAndroid.setNumThreads(2)
         }
         catch (e: Exception) {
             Log.e("Object Detection", "Error loading model or classes", e)
@@ -115,7 +147,7 @@ class RealTimeDetection : ComponentActivity(), SensorEventListener {
             sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
             sensorAccel = if (sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER) != null) {
                 // Success! There's an accelerometer.
-                Log.d("Sensor", "Accelerometro iniciado")
+                Log.d("SENSOR", "Accelerometro iniciado")
                 sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
             }
             else {
@@ -129,9 +161,14 @@ class RealTimeDetection : ComponentActivity(), SensorEventListener {
         }
     }
 
-    // Nuevo valor para los sensores
+    override fun onDestroy() {
+        super.onDestroy()
+
+        module.close()
+    }
+
     override fun onSensorChanged(event: SensorEvent) {
-        // Pasa altos
+        /** FILTRO Pasa altos **/
         // alpha is calculated as t / (t + dT)
         // with t, the low-pass filter's time-constant
         // and dT, the event delivery rate
@@ -173,7 +210,7 @@ class RealTimeDetection : ComponentActivity(), SensorEventListener {
         sensorManager.unregisterListener(this)
     }
 
-
+// @=============== START MAIN UI ===============@
     @Composable
     fun MyApp() {
         val context = LocalContext.current
@@ -190,14 +227,14 @@ class RealTimeDetection : ComponentActivity(), SensorEventListener {
             }
 
         Column(
-            modifier = Modifier.fillMaxSize(),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
+            verticalArrangement = Arrangement.Center,
+            modifier = Modifier.fillMaxSize().background(Color.DarkGray)
         ) {
 
             if (hasStarted){
                 CameraPreview({ newBitmap ->
-                    /** Aca va el procesamiento de la imagen **/
+                    /** Aca la funcion de procesamiento de la imagen **/
 
                     val time = measureTimeMillis {
 
@@ -207,12 +244,12 @@ class RealTimeDetection : ComponentActivity(), SensorEventListener {
                         // Pintar un cuadro
                         // bitmap = paintParty(newBitmap)
 
-                        // INFERIR - oh boy...
+                        // INFERIR con el modelo
                         bitmap = detectObjectsAndPaint(newBitmap)
 
                     }
 
-                    Log.d("IMAGEN_MODIFICADA", "Tiempo de inferencia: $time [ms]")
+                    Log.d("IMAGEN_MODIFICADA", "Tiempo de procesamiento: $time [ms]")
                 },
                     isPreviewVisible = false,
                     //modifier = Modifier.height(300.dp).fillMaxWidth()
@@ -255,7 +292,7 @@ class RealTimeDetection : ComponentActivity(), SensorEventListener {
         }
         //Log.d("INFORMACION", "Bucle de MAIN UI")
 
-    // END MAIN UI
+// @=============== END MAIN UI ===============@
     }
 
     @Composable
@@ -356,11 +393,13 @@ class RealTimeDetection : ComponentActivity(), SensorEventListener {
             return bitmap
         }
 
-        val resizedBitmap = Bitmap.createScaledBitmap(bitmap, 640, 640, true)
-        val inputTensor = TensorImageUtils.bitmapToFloat32Tensor(resizedBitmap, floatArrayOf(0.0f, 0.0f, 0.0f), floatArrayOf(1.0f, 1.0f, 1.0f))
-        val outputTuple = module?.forward(IValue.from(inputTensor))?.toTuple() ?: return null
-        val outputTensor = outputTuple[0].toTensor()
-        val outputs = outputTensor.dataAsFloatArray
+        val tensorBitmap = TensorImage.fromBitmap(bitmap)
+
+        val input = processor.process(tensorBitmap)
+
+        val outputsBuffer = module.process(input.tensorBuffer)
+
+        val outputs = outputsBuffer.outputFeature0AsTensorBuffer.floatArray
 
         val imgScaleX = bitmap.width / 640.0f
         val imgScaleY = bitmap.height / 640.0f
@@ -383,10 +422,10 @@ class RealTimeDetection : ComponentActivity(), SensorEventListener {
 
             if (score > 0.3) { //0.5
 
-                val x = prediction[0] * imgScaleX
-                val y = prediction[1] * imgScaleY
-                val w = prediction[2] * imgScaleX
-                val h = prediction[3] * imgScaleY
+                val x = prediction[0] * imgScaleX * 640f
+                val y = prediction[1] * imgScaleY * 640f
+                val w = prediction[2] * imgScaleX * 640f
+                val h = prediction[3] * imgScaleY * 640f
 
                 //val classId = prediction[5].toInt()
                 val classId = argmax(clasesScores)

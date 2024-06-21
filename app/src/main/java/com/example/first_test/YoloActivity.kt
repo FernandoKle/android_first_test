@@ -33,7 +33,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -127,7 +126,7 @@ class YoloActivity : ComponentActivity() {
 
 
     @Composable
-    fun RainbowButton(onClick: () -> Unit) {
+    fun RainbowButton(onClick: () -> Unit, text: String) {
         val colors = listOf(
             Color.Red,
             Color.Yellow,
@@ -152,7 +151,7 @@ class YoloActivity : ComponentActivity() {
                 .padding(8.dp),
             shape = RoundedCornerShape(12.dp)
         ) {
-            Text(text = "LIVE", fontSize = 16.sp)
+            Text(text = text, fontSize = 16.sp)
         }
     }
 
@@ -212,12 +211,13 @@ class YoloActivity : ComponentActivity() {
                 verticalArrangement = Arrangement.Center,
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Color.White)
+                    .background(Color.DarkGray)
             ) {
+                Spacer(modifier = Modifier.height(16.dp))
                 Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .offset(x = 30.dp)
+                    horizontalArrangement = Arrangement.Center,
+                    modifier = Modifier.fillMaxWidth()
+                        //.offset(x = 30.dp)
                 ) {
                     Button(
                         onClick = {
@@ -243,11 +243,6 @@ class YoloActivity : ComponentActivity() {
                         ) {
                             Text(text = "Analizar")
                         }
-                        Spacer(modifier = Modifier.height(16.dp))
-                        RainbowButton {
-                            val intent = Intent(context, RealTimeDetection::class.java)
-                            ContextCompat.startActivity(context, intent, null)
-                        }
                     }
                     Spacer(modifier = Modifier.width(16.dp))
                     Button(
@@ -267,6 +262,25 @@ class YoloActivity : ComponentActivity() {
                     ) {
                         Text(text = "Tomar \nFoto")
                     }
+                }
+                Spacer(modifier = Modifier.height(16.dp))
+                Row (
+                    horizontalArrangement = Arrangement.Center,
+                    modifier = Modifier.fillMaxWidth()
+                ){
+                    RainbowButton ({
+                        val intent = Intent(context, RealTimeDetection::class.java)
+                        ContextCompat.startActivity(context, intent, null)
+                    },
+                        text = "LIVE"
+                    )
+                    Spacer(modifier = Modifier.width(16.dp))
+                    RainbowButton ({
+                        val intent = Intent(context, RealTimeDetectionTF::class.java)
+                        ContextCompat.startActivity(context, intent, null)
+                    },
+                        text = "TF LIVE"
+                    )
                 }
                 Spacer(modifier = Modifier.height(16.dp))
 

@@ -91,11 +91,17 @@ dependencies {
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
 
+    // Numero de BIGcores
+    //implementation("com.github.sacv081c:cpufeatures:1.0.4")
+
     // Tensorflow
     implementation(libs.tensorflow.lite.support)
     implementation(libs.tensorflow.lite.metadata)
     implementation(libs.tensorflow.lite.gpu)
     //implementation("org.tensorflow:tensorflow-lite-task-vision") //:0.4.0
+    // que tan gordo puede ser...
+    //implementation("org.tensorflow/tensorflow-lite-select-tf-ops:2.16.1")
+    //implementation("pkg:maven/org.tensorflow/tensorflow-lite-select-tf-ops@2.16.1")
 
     // image from URL ?
     implementation("io.coil-kt:coil-compose:2.2.2")
