@@ -1,4 +1,5 @@
 package com.example.first_test
+/*
 
 import android.content.Context
 import android.content.Intent
@@ -465,3 +466,4 @@ class YoloActivity : ComponentActivity() {
         )
     }
 }
+*/

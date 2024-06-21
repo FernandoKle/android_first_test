@@ -1,5 +1,5 @@
 package com.example.first_test;
-
+/*
 import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
@@ -75,11 +75,9 @@ public class ModelActivity extends AppCompatActivity {
     textView.setText(className);
   }
 
-  /**
-   * Copies specified asset to the file in /files app directory and returns this file absolute path.
-   *
-   * @return absolute file path
-   */
+   // Copies specified asset to the file in /files app directory and returns this file absolute path.
+   // @return absolute file path
+
   public static String assetFilePath(Context context, String assetName) throws IOException {
     File file = new File(context.getFilesDir(), assetName);
     if (file.exists() && file.length() > 0) {
@@ -99,3 +97,4 @@ public class ModelActivity extends AppCompatActivity {
     }
   }
 }
+*/

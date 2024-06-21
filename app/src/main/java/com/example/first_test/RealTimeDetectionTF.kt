@@ -50,7 +50,7 @@ import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
-import com.example.first_test.ml.Yolov5sFp16NoNms
+import com.example.first_test.ml.Yolov5nFp16
 import org.tensorflow.lite.support.common.ops.NormalizeOp
 import org.tensorflow.lite.support.image.ImageProcessor
 import org.tensorflow.lite.support.image.TensorImage
@@ -70,8 +70,10 @@ import kotlin.system.measureTimeMillis
 
 class RealTimeDetectionTF : ComponentActivity(), SensorEventListener {
 
-    private lateinit var module: Yolov5sFp16NoNms
-    //private lateinit var module: Yolov5sInt8
+    private data class Result(val classIndex: Int, val className: String, val score: Float, val rect: RectF)
+    
+    //private lateinit var module: Yolov5sFp16NoNms
+    private lateinit var module: Yolov5nFp16
 
     private var classes: List<String>? = null
     private lateinit var processor: ImageProcessor
@@ -95,9 +97,11 @@ class RealTimeDetectionTF : ComponentActivity(), SensorEventListener {
                 .add(NormalizeOp(0f, 255f)) // 0~255 a 0~1 ==> Hace: (valor - mean) / stddev
                 .build()
 
-            // CPU y F16
+            // CPU y yolov5s F16
             // 820 ms con 5 hilos y 900 con 4
             // en tel de fer
+            // CPU y yolov5n F16
+            /// 500 ms tel de fer
             Log.i("MODEL", "Cargando Modelo")
             try {
                 val builder = Model.Options.Builder()
@@ -105,29 +109,30 @@ class RealTimeDetectionTF : ComponentActivity(), SensorEventListener {
                     .setNumThreads(4)
                     .build()
 
-                module = Yolov5sFp16NoNms.newInstance(this, builder)
+                module = Yolov5nFp16.newInstance(this, builder)
 
                 Log.i("MODEL", "Utilizando GPU")
-
             }
             catch (e: Exception){
+                Log.e("MODEL", "Error al utilizar la GPU:", e)
                 try {
                     val builder = Model.Options.Builder()
                         .setDevice(Model.Device.NNAPI)
                         .setNumThreads(4)
                         .build()
 
-                    module = Yolov5sFp16NoNms.newInstance(this, builder)
+                    module = Yolov5nFp16.newInstance(this, builder)
 
                     Log.i("MODEL", "Utilizando NNAPI")
                 }
                 catch (e: Exception){
+                    Log.e("MODEL", "Error al utilizar NNAPI:", e)
                     val builder = Model.Options.Builder()
                         .setDevice(Model.Device.CPU)
                         .setNumThreads(4)
                         .build()
 
-                    module = Yolov5sFp16NoNms.newInstance(this, builder)
+                    module = Yolov5nFp16.newInstance(this, builder)
 
                     Log.i("MODEL", "Utilizando CPU")
                 }
@@ -401,16 +406,16 @@ class RealTimeDetectionTF : ComponentActivity(), SensorEventListener {
 
         val outputs = outputsBuffer.outputFeature0AsTensorBuffer.floatArray
 
-        val imgScaleX = bitmap.width / 640.0f
-        val imgScaleY = bitmap.height / 640.0f
+        val imgScaleX = bitmap.width * 1.0f
+        val imgScaleY = bitmap.height * 1.0f
 
         val results = outputsToNMSPredictions(outputs, imgScaleX, imgScaleY)
 
         return paintDetectionResults(results, bitmap)
     }
 
-    private fun outputsToNMSPredictions(outputs: FloatArray, imgScaleX: Float, imgScaleY: Float): List<YoloActivity.Result> {
-        val results = mutableListOf<YoloActivity.Result>()
+    private fun outputsToNMSPredictions(outputs: FloatArray, imgScaleX: Float, imgScaleY: Float): List<Result> {
+        val results = mutableListOf<Result>()
         val numPredictions = outputs.size / 85
 
         for (i in 0 until numPredictions) {
@@ -422,10 +427,10 @@ class RealTimeDetectionTF : ComponentActivity(), SensorEventListener {
 
             if (score > 0.3) { //0.5
 
-                val x = prediction[0] * imgScaleX * 640f
-                val y = prediction[1] * imgScaleY * 640f
-                val w = prediction[2] * imgScaleX * 640f
-                val h = prediction[3] * imgScaleY * 640f
+                val x = prediction[0] * imgScaleX
+                val y = prediction[1] * imgScaleY
+                val w = prediction[2] * imgScaleX
+                val h = prediction[3] * imgScaleY
 
                 //val classId = prediction[5].toInt()
                 val classId = argmax(clasesScores)
@@ -436,7 +441,7 @@ class RealTimeDetectionTF : ComponentActivity(), SensorEventListener {
 
                 val rect = RectF(left, top, right, bottom)
                 results.add(
-                    YoloActivity.Result(
+                    Result(
                         classId,
                         classes?.get(classId) ?: "Unknown",
                         score,
@@ -461,10 +466,10 @@ class RealTimeDetectionTF : ComponentActivity(), SensorEventListener {
         return maxIdx
     }
 
-    private fun filterNMS(results: List<YoloActivity.Result>): List<YoloActivity.Result> {
+    private fun filterNMS(results: List<Result>): List<Result> {
 
         val sortedResults = results.sortedByDescending { it.score }
-        val filteredResults = mutableListOf<YoloActivity.Result>()
+        val filteredResults = mutableListOf<Result>()
         val threshold: Float = 0.5f
 
         for (result in sortedResults) {
@@ -503,7 +508,7 @@ class RealTimeDetectionTF : ComponentActivity(), SensorEventListener {
         return if (unionArea > 0) intersectionArea / unionArea else 0f
     }
 
-    private fun paintDetectionResults(results: List<YoloActivity.Result>, bitmap: Bitmap) : Bitmap {
+    private fun paintDetectionResults(results: List<Result>, bitmap: Bitmap) : Bitmap {
 
         val scale : Float = bitmap.width / 1000f // bitmap.width = 900 ~ 3000
 

@@ -2,19 +2,19 @@
 <project version="4">
   <component name="deploymentTargetDropDown">
     <value>
-      <entry key="ImageCaptureActivity">
-        <State />
-      </entry>
-      <entry key="MainActivity">
-        <State />
-      </entry>
-      <entry key="RealTimeDetection">
+      <entry key="ImageCaptureActivityTF">
         <State />
       </entry>
       <entry key="RealTimeDetectionTF">
         <State />
       </entry>
+      <entry key="RealTimeDetectionTFint8">
+        <State />
+      </entry>
       <entry key="YoloActivity">
+        <State />
+      </entry>
+      <entry key="YoloActivityTF">
         <State />
       </entry>
       <entry key="app">

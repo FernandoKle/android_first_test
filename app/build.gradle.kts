@@ -21,7 +21,7 @@ android {
         }
 
         ndk {
-            abiFilters.addAll(listOf("armeabi-v7a", "arm64-v8a"))
+            abiFilters.addAll(listOf("armeabi-v7a")) //"arm64-v8a"
         }
     }
 
@@ -109,8 +109,8 @@ dependencies {
     // Torch
     //implementation("org.pytorch:pytorch_android_lite:1.10.0")
     //implementation("org.pytorch:pytorch_android_torchvision_lite:1.10.0")
-    implementation("org.pytorch:pytorch_android_lite:2.1.0")
-    implementation("org.pytorch:pytorch_android_torchvision_lite:2.1.0")
+    //implementation("org.pytorch:pytorch_android_lite:2.1.0")
+    //implementation("org.pytorch:pytorch_android_torchvision_lite:2.1.0")
     //implementation("pkg:maven/org.pytorch/torchvision_ops@0.14.0")
     //implementation("org.pytorch:torchvision_ops:0.14.0")
 

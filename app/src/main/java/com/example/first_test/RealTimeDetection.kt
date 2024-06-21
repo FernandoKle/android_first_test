@@ -1,4 +1,5 @@
 package com.example.first_test
+/*
 
 import android.Manifest
 import android.content.Context
@@ -527,3 +528,4 @@ class RealTimeDetection : ComponentActivity(), SensorEventListener {
 
     // END
 }
+*/

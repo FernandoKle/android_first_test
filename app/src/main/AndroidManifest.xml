@@ -25,6 +25,7 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.First_test"
         tools:targetApi="31">
+
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -34,31 +35,25 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
         <activity
-            android:name=".ModelActivity"
-            android:exported="true"
-            android:theme="@style/Theme.AppCompat.Light.NoActionBar">
-        </activity>
-        <activity
-            android:name=".ImageCaptureActivity"
+            android:name=".ImageCaptureActivityTF"
             android:exported="true"
             android:theme="@style/Theme.First_test">
         </activity>
+
         <activity
-            android:name=".YoloActivity"
+            android:name=".YoloActivityTF"
             android:exported="true"
             android:theme="@style/Theme.First_test">
         </activity>
-        <activity
-            android:name=".RealTimeDetection"
-            android:exported="true"
-            android:theme="@style/Theme.First_test">
-        </activity>
+
         <activity
             android:name=".RealTimeDetectionTF"
             android:exported="true"
             android:theme="@style/Theme.First_test">
         </activity>
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="com.example.first_test.provider"
@@ -68,12 +63,15 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths" />
         </provider>
+
         <uses-library
             android:name="[libOpenCL.so](http://libopencl.so/)"
             android:required="false"/>
+
         <uses-library
             android:name="[libOpenCL-pixel.so](http://libopencl-pixel.so/)"
             android:required="false"/>
+
     </application>
 
 </manifest>

@@ -18,6 +18,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -151,16 +152,18 @@ fun TextInputScreen() {
                 label = { Text("Ingrese texto") },
                 modifier = Modifier.fillMaxWidth()
             )
-            NavigateButton(
-                modifier = Modifier.offset(x = 10.dp, y = 380.dp),
-                activity = ImageCaptureActivity::class,
-                text = "Jugar con mobilenet V2"
-            )
-            NavigateButton(
-                modifier = Modifier.offset(x = 220.dp, y = 300.dp),
-                activity = YoloActivity::class,
-                text = "YOLO"
-            )
+            Row (
+                horizontalArrangement = Arrangement.Center,
+            ){
+                NavigateButton(
+                    activity = ImageCaptureActivityTF::class,
+                    text = "Mobilenet V3"
+                )
+                NavigateButton(
+                    activity = YoloActivityTF::class,
+                    text = "YOLO"
+                )
+            }
             Spacer(modifier = Modifier.height(16.dp))
             Text(
                 text = processedText,
