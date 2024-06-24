@@ -164,6 +164,14 @@ fun TextInputScreen() {
                     text = "YOLO"
                 )
             }
+            Row (
+                horizontalArrangement = Arrangement.Center,
+            ){
+                NavigateButton(
+                    activity = RealTimeOCR::class,
+                    text = "OCR"
+                )
+            }
             Spacer(modifier = Modifier.height(16.dp))
             Text(
                 text = processedText,

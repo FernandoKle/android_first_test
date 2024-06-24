@@ -35,8 +35,12 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -46,6 +50,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
@@ -75,6 +80,10 @@ class RealTimeOCR : ComponentActivity(), SensorEventListener {
     private lateinit var module: RosettaFp16
 
     private var tokens: List<String>? = null
+
+    private val input_w = 100
+    private val input_h = 32
+
     private lateinit var processor: ImageProcessor
 
     private lateinit var sensorManager: SensorManager
@@ -92,7 +101,7 @@ class RealTimeOCR : ComponentActivity(), SensorEventListener {
             /** Initialization */
 
             processor = ImageProcessor.Builder()
-                .add(ResizeOp(32, 100, ResizeOp.ResizeMethod.NEAREST_NEIGHBOR))
+                .add(ResizeOp(input_h, input_w, ResizeOp.ResizeMethod.NEAREST_NEIGHBOR))
                 .add(TransformToGrayscaleOp())
                 .add(NormalizeOp(127.5f, 127.5f)) // 0~255 a 0~1 ==> Hace: (valor - mean) / stddev
                 .build()
@@ -220,6 +229,7 @@ class RealTimeOCR : ComponentActivity(), SensorEventListener {
     fun MyApp() {
         val context = LocalContext.current
         var bitmap by remember { mutableStateOf<Bitmap?>(null) }
+        var zoomBitmap by remember { mutableStateOf<Bitmap?>(null) }
         var detectedText by remember { mutableStateOf<String>("") }
         var hasStarted by remember { mutableStateOf(false) }
 
@@ -253,17 +263,27 @@ class RealTimeOCR : ComponentActivity(), SensorEventListener {
                         Log.d("SENSOR", "accelMag: $accelMag [M/s^2]")
 
                         if (accelMag < 0.25){
-                            // INFERIR con el modelo
-                            detectedText = doOCR(newBitmap)
-                            Log.d("OCR", "detecto: $detectedText")
 
-                            // Pintar un cuadro
-                            bitmap = paintStaticRect(newBitmap, detectedText)
+                            // Recorte
+                            val w = newBitmap.width
+                            val h = newBitmap.height
+
+                            val x = ( w/2 - input_w/2 ).toInt()
+                            val y = ( 0.2f * h ).toInt()
+
+                            zoomBitmap = Bitmap.createBitmap(
+                                newBitmap, x, y, input_w, input_h)
+
+                            Log.d("OCR", "recorte: w: ${zoomBitmap?.width} h: ${zoomBitmap?.height}")
+
+                            // INFERIR con el modelo
+                            detectedText = doOCR(zoomBitmap ?: newBitmap)
+
+                            Log.d("OCR", "detecto: $detectedText")
                         }
-                        else {
-                            // Mantener la original
-                            bitmap = newBitmap
-                        }
+
+                        // Pintar un cuadro
+                        bitmap = paintStaticRect(newBitmap, detectedText)
                     }
 
                     Log.d("IMAGEN_MODIFICADA", "Tiempo de procesamiento: $time [ms]")
@@ -298,7 +318,27 @@ class RealTimeOCR : ComponentActivity(), SensorEventListener {
                     bitmap = it.asImageBitmap(),
                     contentDescription = null,
                     modifier = Modifier
-                        .fillMaxSize()
+                        .clip(RoundedCornerShape(16.dp))
+                        .fillMaxWidth()
+                        .clickable {
+                            //hasStarted = false
+                            Log.d("INFORMACION", "TOCO la imagen")
+                        }
+                )
+            }
+
+            zoomBitmap?.let {
+                Spacer(modifier = Modifier.height(10.dp))
+                Text(
+                    text = "ZOOM",
+                    color = Color.Green
+                )
+                Image(
+                    bitmap = it.asImageBitmap(),
+                    contentDescription = null,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(10.dp))
+                        .fillMaxWidth()
                         .clickable {
                             //hasStarted = false
                             Log.d("INFORMACION", "TOCO la imagen")
@@ -416,17 +456,17 @@ class RealTimeOCR : ComponentActivity(), SensorEventListener {
     fun doOCR(bitmap: Bitmap) : String {
 
         // Recortar bitmap
-        val w = bitmap.width
-        val h = bitmap.height
+        //val w = bitmap.width
+        //val h = bitmap.height
 
-        val x = ( w/2 - 50 ).toInt()
-        val y = ( 0.2f * h ).toInt()
+        //val x = ( w/2 - input_w ).toInt()
+        //val y = ( 0.2f * h ).toInt()
 
-        val recorte = Bitmap.createBitmap(
-            bitmap, x, y, x + 100, y + 30)
+        //val recorte = Bitmap.createBitmap(
+        //    bitmap, x, y, input_w, input_h)
 
         // Inferir
-        val tensorBitmap = TensorImage.fromBitmap(recorte)
+        val tensorBitmap = TensorImage.fromBitmap(bitmap)
 
         val input = processor.process(tensorBitmap)
 
@@ -490,9 +530,9 @@ class RealTimeOCR : ComponentActivity(), SensorEventListener {
             style = Paint.Style.FILL
         }
 
-        val x = w/2 - 50f //0.35f * w
+        val x = ( w/2 - input_w/2 ).toFloat()
         val y = 0.2f * h
-        val cuadro = RectF(x, y, x + 100f, y + 30f)
+        val cuadro = RectF(x, y, x + input_w, y + input_h)
 
         canvas.drawRect(cuadro, paint)
         // Texto
