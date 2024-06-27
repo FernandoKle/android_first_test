@@ -102,7 +102,7 @@ class RealTimeOCR : ComponentActivity(), SensorEventListener {
             /** Initialization */
 
             processor = ImageProcessor.Builder()
-                .add(ResizeOp(input_h, input_w, ResizeOp.ResizeMethod.NEAREST_NEIGHBOR))
+                .add(ResizeOp(input_h, input_w, ResizeOp.ResizeMethod.BILINEAR))
                 .add(TransformToGrayscaleOp())
                 // 0~255 a 0~1 ==> Hace: (valor - mean) / stddev
                 //.add(NormalizeOp(127.5f, 127.5f)) // Rosetta

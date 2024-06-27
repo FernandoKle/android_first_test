@@ -95,11 +95,11 @@ class TextDetectionOnly : ComponentActivity() {
 
         try {
 
-            val mean = floatArrayOf(123.68f, 116.779f, 103.939f)
+            val mean = floatArrayOf(103.94f, 116.78f, 123.68f) // (123.68f, 116.78f, 103.94f)
             val stddev = floatArrayOf(1f, 1f, 1f)
 
             processor = ImageProcessor.Builder()
-                .add(ResizeOp(input_h, input_w, ResizeOp.ResizeMethod.NEAREST_NEIGHBOR))
+                .add(ResizeOp(input_h, input_w, ResizeOp.ResizeMethod.BILINEAR))
                 .add(NormalizeOp(mean, stddev)) // 0~255 a -1~1
                 .build()
 
@@ -423,8 +423,8 @@ class TextDetectionOnly : ComponentActivity() {
         // Theta: El ángulo de rotación del texto.
 
         // Procesar la salida del modelo EAST
-        for (y in scores.indices) {
-            for (x in scores[y].indices) {
+        for (y in 0 until output_h) {
+            for (x in 0 until output_w) {
 
                 val score = scores[y][x]
 
@@ -451,8 +451,8 @@ class TextDetectionOnly : ComponentActivity() {
                         rect = RectF(
                             startX * rW,
                             startY * rH,
-                            endX * rW,
-                            endY * rH,
+                            (endX) * rW,
+                            (endY) * rH,
                             )
                         )
                     )
@@ -474,7 +474,7 @@ class TextDetectionOnly : ComponentActivity() {
 
         val sortedResults = results.sortedByDescending { it.score }
         val filteredResults = mutableListOf<Result>()
-        val threshold: Float = 0.5f
+        val threshold: Float = 0.4f
 
         for (result in sortedResults) {
             var shouldAdd = true
@@ -527,7 +527,7 @@ class TextDetectionOnly : ComponentActivity() {
 
         for (result in results) {
 
-            Log.d("DIBUJANDO", "(${result.rect.left.toInt()}, ${result.rect.top.toInt()}),  (${result.rect.right.toInt()}, ${result.rect.bottom.toInt()})")
+            //Log.d("DIBUJANDO", "(${result.rect.left.toInt()}, ${result.rect.top.toInt()}),  (${result.rect.right.toInt()}, ${result.rect.bottom.toInt()})")
 
             canvas.drawRect(result.rect, paint)
         }
