@@ -119,6 +119,12 @@ dependencies {
     implementation("org.tensorflow:tensorflow-lite-gpu-delegate-plugin:0.4.4")
     implementation("org.tensorflow:tensorflow-lite-support:0.4.4")
     implementation("org.tensorflow:tensorflow-lite-metadata:0.4.4")
+    // The FAT one
+    implementation("org.tensorflow:tensorflow-lite-select-tf-ops:2.16.1")
+
+    // OpenCV - Otro gordo mas a la lista...
+    implementation("org.opencv:opencv:4.10.0")
+    //implementation("ai.eye2you:opencv-android:4.5.2")
 
     // image from URL ?
     implementation("io.coil-kt:coil-compose:2.2.2")

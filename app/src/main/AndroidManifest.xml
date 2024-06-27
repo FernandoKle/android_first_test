@@ -55,6 +55,12 @@
         </activity>
 
         <activity
+            android:name=".TextDetectionOnly"
+            android:exported="true"
+            android:theme="@style/Theme.First_test">
+        </activity>
+
+        <activity
             android:name=".RealTimeOCR"
             android:exported="true"
             android:theme="@style/Theme.First_test">

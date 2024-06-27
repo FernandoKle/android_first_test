@@ -58,7 +58,7 @@ import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
-import com.example.first_test.ml.RosettaFp16
+import com.example.first_test.ml.RosettaDr
 import org.tensorflow.lite.support.common.ops.NormalizeOp
 import org.tensorflow.lite.support.image.ImageProcessor
 import org.tensorflow.lite.support.image.TensorImage
@@ -77,12 +77,13 @@ import kotlin.system.measureTimeMillis
 
 class RealTimeOCR : ComponentActivity(), SensorEventListener {
 
-    private lateinit var module: RosettaFp16
+    private lateinit var module: RosettaDr
+    // private lateinit var module: KerasOcrDrNoCtc
 
     private var tokens: List<String>? = null
 
-    private val input_w = 100
-    private val input_h = 32
+    private val input_w = 100 // 100
+    private val input_h = 32 // 32
 
     private lateinit var processor: ImageProcessor
 
@@ -103,7 +104,9 @@ class RealTimeOCR : ComponentActivity(), SensorEventListener {
             processor = ImageProcessor.Builder()
                 .add(ResizeOp(input_h, input_w, ResizeOp.ResizeMethod.NEAREST_NEIGHBOR))
                 .add(TransformToGrayscaleOp())
-                .add(NormalizeOp(127.5f, 127.5f)) // 0~255 a 0~1 ==> Hace: (valor - mean) / stddev
+                // 0~255 a 0~1 ==> Hace: (valor - mean) / stddev
+                //.add(NormalizeOp(127.5f, 127.5f)) // Rosetta
+                .add(NormalizeOp(0f, 255f)) // Keras OCR
                 .build()
 
             // CPU y yolov5s F16
@@ -118,7 +121,7 @@ class RealTimeOCR : ComponentActivity(), SensorEventListener {
                     .setNumThreads(4)
                     .build()
 
-                module = RosettaFp16.newInstance(this, builder)
+                module = RosettaDr.newInstance(this, builder)
 
                 Log.i("MODEL", "Utilizando GPU")
             }
@@ -130,7 +133,7 @@ class RealTimeOCR : ComponentActivity(), SensorEventListener {
                         .setNumThreads(4)
                         .build()
 
-                    module = RosettaFp16.newInstance(this, builder)
+                    module = RosettaDr.newInstance(this, builder)
 
                     Log.i("MODEL", "Utilizando NNAPI")
                 }
@@ -141,7 +144,7 @@ class RealTimeOCR : ComponentActivity(), SensorEventListener {
                         .setNumThreads(4)
                         .build()
 
-                    module = RosettaFp16.newInstance(this, builder)
+                    module = RosettaDr.newInstance(this, builder)
 
                     Log.i("MODEL", "Utilizando CPU")
                 }
@@ -274,7 +277,7 @@ class RealTimeOCR : ComponentActivity(), SensorEventListener {
                             zoomBitmap = Bitmap.createBitmap(
                                 newBitmap, x, y, input_w, input_h)
 
-                            Log.d("OCR", "recorte: w: ${zoomBitmap?.width} h: ${zoomBitmap?.height}")
+                            //Log.d("OCR", "recorte: w: ${zoomBitmap?.width} h: ${zoomBitmap?.height}")
 
                             // INFERIR con el modelo
                             detectedText = doOCR(zoomBitmap ?: newBitmap)
@@ -455,16 +458,6 @@ class RealTimeOCR : ComponentActivity(), SensorEventListener {
 
     fun doOCR(bitmap: Bitmap) : String {
 
-        // Recortar bitmap
-        //val w = bitmap.width
-        //val h = bitmap.height
-
-        //val x = ( w/2 - input_w ).toInt()
-        //val y = ( 0.2f * h ).toInt()
-
-        //val recorte = Bitmap.createBitmap(
-        //    bitmap, x, y, input_w, input_h)
-
         // Inferir
         val tensorBitmap = TensorImage.fromBitmap(bitmap)
 
@@ -491,7 +484,9 @@ class RealTimeOCR : ComponentActivity(), SensorEventListener {
 
             val tokenId = argmax(prediction)
 
+            //if ( prediction[tokenId] > 0.3 ) {
             finalText += tokens?.get(tokenId) ?: ""
+            //}
         }
 
         return finalText

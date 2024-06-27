@@ -5,13 +5,13 @@
       <entry key="ImageCaptureActivityTF">
         <State />
       </entry>
-      <entry key="RealTimeDetectionTF">
-        <State />
-      </entry>
       <entry key="RealTimeDetectionTFint8">
         <State />
       </entry>
       <entry key="RealTimeOCR">
+        <State />
+      </entry>
+      <entry key="TextDetectionOnly">
         <State />
       </entry>
       <entry key="YoloActivityTF">
