@@ -8,6 +8,7 @@ import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Matrix
 import android.graphics.Paint
+import android.graphics.RectF
 import android.net.Uri
 import android.os.Bundle
 import android.os.Environment
@@ -53,17 +54,6 @@ import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import com.example.first_test.ml.EastFloat640
 import com.example.first_test.ui.theme.First_testTheme
-import org.opencv.android.OpenCVLoader
-import org.opencv.android.Utils
-import org.opencv.core.Mat
-import org.opencv.core.MatOfFloat
-import org.opencv.core.MatOfInt
-import org.opencv.core.MatOfRect2d
-import org.opencv.core.Rect
-import org.opencv.core.Rect2d
-import org.opencv.core.Scalar
-import org.opencv.dnn.Dnn
-import org.opencv.imgproc.Imgproc
 import org.tensorflow.lite.support.common.ops.NormalizeOp
 import org.tensorflow.lite.support.image.ImageProcessor
 import org.tensorflow.lite.support.image.TensorImage
@@ -74,10 +64,17 @@ import java.io.File
 import java.io.IOException
 import java.io.InputStreamReader
 import kotlin.math.cos
+import kotlin.math.max
+import kotlin.math.min
 import kotlin.math.sin
 import kotlin.system.measureTimeMillis
 
 class TextDetectionOnly : ComponentActivity() {
+
+    private data class Result(
+        val score: Float,
+        val rect: RectF
+    )
 
     private lateinit var module: EastFloat640
     private lateinit var processor: ImageProcessor
@@ -150,7 +147,7 @@ class TextDetectionOnly : ComponentActivity() {
             }
 
             // Iniciar OpenCV
-            OpenCVLoader.initLocal()
+            // OpenCVLoader.initLocal()
 
         } catch (e: Exception) {
             Log.e("Object Detection", "Error loading model or classes", e)
@@ -401,26 +398,22 @@ class TextDetectionOnly : ComponentActivity() {
         val results = processEastOutputs(
             scores,
             geometry,
-            bitmap.width.toDouble() / input_w.toDouble(),
-            bitmap.height.toDouble() / input_h.toDouble()
+            bitmap.width.toFloat() / input_w.toFloat(),
+            bitmap.height.toFloat() / input_h.toFloat()
         )
 
         return paintDetectionResults(results, bitmap)
-        //return paintDetectionResultsV2(results, bitmap)
     }
 
     // Procesar las salidas del modelo EAST para obtener los Rect
-    fun processEastOutputs(
+    private fun processEastOutputs(
         scores: Array<FloatArray>,
         geometry: Array<Array<FloatArray>>,
-        rW: Double,
-        rH: Double
-    ): List<Rect2d> {
+        rW: Float,
+        rH: Float
+    ): List<Result> {
 
-        val threshold = 0.5f
-        val nmsThreshold = 0.4f
-        val boxes = mutableListOf<Rect2d>()
-        val confidences = mutableListOf<Float>()
+        val boxes = mutableListOf<Result>()
 
         // Geometry:
         // d1: Distancia desde el píxel actual hasta el borde superior del texto.
@@ -435,17 +428,17 @@ class TextDetectionOnly : ComponentActivity() {
 
                 val score = scores[y][x]
 
-                if (score >= threshold) {
+                if (score >= 0.5f) {
 
-                    val offsetX = x * 4.0
-                    val offsetY = y * 4.0
+                    val offsetX = x * 4.0f
+                    val offsetY = y * 4.0f
 
                     val angle = geometry[y][x][4]
                     val cosA = cos(angle)
                     val sinA = sin(angle)
 
-                    val h = ( geometry[y][x][0] + geometry[y][x][2] ).toDouble()
-                    val w = ( geometry[y][x][1] + geometry[y][x][3] ).toDouble()
+                    val h = geometry[y][x][0] + geometry[y][x][2]
+                    val w = geometry[y][x][1] + geometry[y][x][3]
 
                     val endX = offsetX + cosA * geometry[y][x][1] + sinA * geometry[y][x][2]
                     val endY = offsetY - sinA * geometry[y][x][1] + cosA * geometry[y][x][2]
@@ -453,57 +446,74 @@ class TextDetectionOnly : ComponentActivity() {
                     val startX = endX - w
                     val startY = endY - h
 
-                    boxes.add(Rect2d(
-                        startX* rW,
-                        startY* rH,
-                        endX * rW,
-                        endY * rH,
-                    ))
-
-                    confidences.add(score)
+                    boxes.add(Result(
+                        score = score,
+                        rect = RectF(
+                            startX * rW,
+                            startY * rH,
+                            endX * rW,
+                            endY * rH,
+                            )
+                        )
+                    )
                 }
             }
         }
 
-        // Aplicar Non-Maximum Suppression (NMS) para filtrar las cajas
-        val indices = MatOfInt()
-        val confidencesMat = MatOfFloat(*confidences.toFloatArray())
-
-        //val boxesArray = boxes.map { it.toArray() }.toTypedArray()
-        //val boxesMat = MatOfRect(*boxesArray)
-        val boxesMat = MatOfRect2d(*boxes.toTypedArray())
-
         Log.d("MODELO", "${boxes.size} potenciales predicciones")
 
-        Dnn.NMSBoxes(boxesMat, confidencesMat, threshold, nmsThreshold, indices)
+        val filteredBoxes = filterNMS(boxes)
 
-        if (indices.empty()) {
-            Log.d("MODELO", "No se encontro ningun texto")
-            return emptyList()
-        }
-
-        //val nmsBoxes = mutableListOf<Rect>()
-        val nmsBoxes = mutableListOf<Rect2d>()
-
-        for (i in indices.toArray()) {
-            //nmsBoxes.add(Rect(
-                //boxes[i].x.toInt(),
-                //boxes[i].y.toInt(),
-                //boxes[i].width.toInt(),
-                //boxes[i].height.toInt(),
-            //))
-            nmsBoxes.add(boxes[i])
-        }
-
-        Log.d("MODELO", "${nmsBoxes.size} predicciones restantes")
+        Log.d("MODELO", "${filteredBoxes.size} predicciones restantes")
         Log.d("MODELO", "Escalando boxes por rW: $rW, rH: $rH")
 
-        return nmsBoxes
+        return filteredBoxes
     }
 
-    private fun paintDetectionResults(results: List<Rect2d>, bitmap: Bitmap) : Bitmap {
+    private fun filterNMS(results: List<Result>): List<Result> {
 
-        val scale : Float = bitmap.width / 1000f // bitmap.width = 900 ~ 3000
+        val sortedResults = results.sortedByDescending { it.score }
+        val filteredResults = mutableListOf<Result>()
+        val threshold: Float = 0.5f
+
+        for (result in sortedResults) {
+            var shouldAdd = true
+
+            for (filteredResult in filteredResults) {
+                if ( getIoU(result.rect, filteredResult.rect) > threshold )
+                {
+                    shouldAdd = false
+                    break
+                }
+            }
+
+            if (shouldAdd) {
+                filteredResults.add(result)
+            }
+        }
+
+        return filteredResults
+    }
+
+    fun getIoU(rect1: RectF, rect2: RectF): Float {
+        val intersectionLeft = max(rect1.left, rect2.left)
+        val intersectionTop = max(rect1.top, rect2.top)
+        val intersectionRight = min(rect1.right, rect2.right)
+        val intersectionBottom = min(rect1.bottom, rect2.bottom)
+
+        val intersectionArea = max(0f, intersectionRight - intersectionLeft) * max(0f, intersectionBottom - intersectionTop)
+
+        val rect1Area = (rect1.right - rect1.left) * (rect1.bottom - rect1.top)
+        val rect2Area = (rect2.right - rect2.left) * (rect2.bottom - rect2.top)
+
+        val unionArea = rect1Area + rect2Area - intersectionArea
+
+        return if (unionArea > 0) intersectionArea / unionArea else 0f
+    }
+
+    private fun paintDetectionResults(results: List<Result>, bitmap: Bitmap) : Bitmap {
+
+        val scale : Float = bitmap.width / 1000f
 
         val mutableBitmap = bitmap.copy(Bitmap.Config.ARGB_8888, true)
         val canvas = Canvas(mutableBitmap)
@@ -515,45 +525,17 @@ class TextDetectionOnly : ComponentActivity() {
 
         Log.d("DIBUJANDO", "Bitmap w: ${bitmap.width}, h: ${bitmap.height}")
 
-        for (rect in results) {
+        for (result in results) {
 
-            Log.d("DIBUJANDO", "x: ${rect.x} y: ${rect.y}, w: ${rect.width}, h: ${rect.height}")
+            Log.d("DIBUJANDO", "(${result.rect.left.toInt()}, ${result.rect.top.toInt()}),  (${result.rect.right.toInt()}, ${result.rect.bottom.toInt()})")
 
-            canvas.drawRect(
-                android.graphics.Rect(
-                    ( rect.x ).toInt(),
-                    ( rect.y ).toInt(),
-                    ( rect.x + rect.width).toInt(),
-                    ( rect.y + rect.height).toInt()
-                ),
-                paint
-            )
+            canvas.drawRect(result.rect, paint)
         }
 
         return mutableBitmap
     }
 
-    private fun paintDetectionResultsV2(results: List<Rect>, bitmap: Bitmap) : Bitmap {
-
-        Log.d("DIBUJANDO", "Bitmap w: ${bitmap.width}, h: ${bitmap.height}")
-
-        val img = Mat() //bitmap.width, bitmap.height, 3
-        Utils.bitmapToMat(bitmap, img)
-
-        for (rect in results) {
-
-            Log.d("DIBUJANDO", "x: ${rect.x} y: ${rect.y}, w: ${rect.width}, h: ${rect.height}")
-
-            Imgproc.rectangle(img, rect, Scalar(0.0,255.0,0.0))
-        }
-
-        val bmp = Bitmap.createBitmap(img.cols(), img.rows(), Bitmap.Config.ARGB_8888);
-        Utils.matToBitmap(img, bmp)
-
-        return bmp
-    }
-
-    // Cosas para poder usar la camara
+    // Cosas para poder usar la camara...
     private fun createImageFileUri(context: Context): Uri {
         val imageFile = File(
             context.getExternalFilesDir(Environment.DIRECTORY_PICTURES),
