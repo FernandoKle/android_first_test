@@ -54,6 +54,23 @@ import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import com.example.first_test.ml.EastFloat640
 import com.example.first_test.ui.theme.First_testTheme
+import org.opencv.android.OpenCVLoader
+import org.opencv.android.Utils.bitmapToMat
+import org.opencv.android.Utils.matToBitmap
+import org.opencv.core.Mat
+import org.opencv.core.MatOfFloat
+import org.opencv.core.MatOfInt
+import org.opencv.core.MatOfPoint2f
+import org.opencv.core.MatOfRotatedRect
+import org.opencv.core.Point
+import org.opencv.core.RotatedRect
+import org.opencv.core.Size
+import org.opencv.dnn.Dnn.NMSBoxesRotated
+import org.opencv.imgproc.Imgproc.boxPoints
+import org.opencv.imgproc.Imgproc.getPerspectiveTransform
+import org.opencv.imgproc.Imgproc.warpPerspective
+import org.opencv.utils.Converters.vector_RotatedRect_to_Mat
+import org.opencv.utils.Converters.vector_float_to_Mat
 import org.tensorflow.lite.support.common.ops.NormalizeOp
 import org.tensorflow.lite.support.image.ImageProcessor
 import org.tensorflow.lite.support.image.TensorImage
@@ -83,6 +100,9 @@ class TextDetectionOnly : ComponentActivity() {
     private val input_h = 416
     private val output_w: Int = input_w / 4
     private val output_h: Int = input_h / 4
+
+    private val reg_model_w: Int = 100
+    private val reg_model_h: Int = 32
 
     private var classes: List<String>? = null
     private var photoUri: Uri? = null
@@ -147,7 +167,7 @@ class TextDetectionOnly : ComponentActivity() {
             }
 
             // Iniciar OpenCV
-            // OpenCVLoader.initLocal()
+            OpenCVLoader.initLocal()
 
         } catch (e: Exception) {
             Log.e("Object Detection", "Error loading model or classes", e)
@@ -289,7 +309,8 @@ class TextDetectionOnly : ComponentActivity() {
                             onClick = {
                                 bitmap?.let {
                                     val time = measureTimeMillis {
-                                        paintedBitmap = detectObjectsAndPaint(it)
+                                        //paintedBitmap = detectObjectsAndPaint(it)
+                                        paintedBitmap = detectObjectsAndPaintV2(it)
                                     }
                                     detected = true
                                     Log.d("INFERENCIA", "Tomo: $time [ms]")
@@ -354,7 +375,8 @@ class TextDetectionOnly : ComponentActivity() {
                                 .fillMaxWidth()
                                 .clickable {
                                     val time = measureTimeMillis {
-                                        paintedBitmap = detectObjectsAndPaint(it)
+                                        //paintedBitmap = detectObjectsAndPaint(it)
+                                        paintedBitmap = detectObjectsAndPaintV2(it)
                                     }
                                     detected = true
                                     Log.d("INFERENCIA", "Tomo: $time [ms]")
@@ -366,6 +388,248 @@ class TextDetectionOnly : ComponentActivity() {
         }
     }
 
+
+    private fun detectObjectsAndPaintV2(bitmap: Bitmap) : Bitmap {
+
+        val tensorBitmap = TensorImage.fromBitmap(bitmap)
+
+        val input = processor.process(tensorBitmap)
+
+        val outputsBuffer = module.process(input.tensorBuffer)
+
+        // Salidas del modelo esperadas
+        // EAST scores: (1, h/4, w/4, 1), geometry: (1, h/4, w/4, 5)
+        val scores_array   = outputsBuffer.outputFeature0AsTensorBuffer.floatArray
+        val geometry_array = outputsBuffer.outputFeature1AsTensorBuffer.floatArray
+
+        // Almacenar en forma de matriz
+        val scores   = Array(1) { Array(output_h) { Array(output_w) { FloatArray(1) } } }
+        val geometry = Array(1) { Array(output_h) { Array(output_w) { FloatArray(5) } } }
+
+        // Copiar los datos... Esto no se ve eficiente...
+        for (i in 0 until output_h) {
+            for (j in 0 until output_w) {
+
+                for (k in 0 until 5) {
+                    geometry[0][i][j][k] = geometry_array[ (i * output_w + j) * 5 + k ]
+                }
+                scores[0][i][j] = floatArrayOf(scores_array[ i * output_w + j ])
+            }
+        }
+
+        // Hacer la transpuesta
+        val scoresT =
+            Array(1) { Array(1) { Array(output_h) { FloatArray(output_w) } } }
+        val geometryT =
+            Array(1) { Array(5) { Array(output_h) { FloatArray(output_w) } } }
+
+        for (i in 0 until scoresT[0][0].size) {
+            for (j in 0 until geometryT[0][0][0].size) {
+                for (k in 0 until 1) {
+                    scoresT[0][k][i][j] = scores[0][i][j][k]
+                }
+                for (k in 0 until 5) {
+                    geometryT[0][k][i][j] = geometry[0][i][j][k]
+                }
+            }
+        }
+
+        // Decodificar las Bounding Boxes
+        val detectedRotatedRects = ArrayList<RotatedRect>()
+        val detectedConfidences = ArrayList<Float>()
+
+        for (y in 0 until scoresT[0][0].size) {
+            val detectionScoreData = scoresT[0][0][y]
+            val X0Data = geometryT[0][0][y]
+            val X1Data = geometryT[0][1][y]
+            val X2Data = geometryT[0][2][y]
+            val X3Data = geometryT[0][3][y]
+            val detectionRotationAngleData = geometryT[0][4][y]
+
+            for (x in 0 until scoresT[0][0][0].size) {
+                if (detectionScoreData[x] < 0.5) {
+                    continue
+                }
+
+                // Compute the rotated bounding boxes and confiences (heavily based on OpenCV example):
+                // https://github.com/opencv/opencv/blob/master/samples/dnn/text_detection.py
+                val offsetX = x * 4.0
+                val offsetY = y * 4.0
+
+                val h = X0Data[x] + X2Data[x]
+                val w = X1Data[x] + X3Data[x]
+
+                val angle = detectionRotationAngleData[x]
+                val cos = cos(angle.toDouble())
+                val sin = sin(angle.toDouble())
+
+                val offset =
+                    Point(
+                        offsetX + cos * X1Data[x] + sin * X2Data[x],
+                        offsetY - sin * X1Data[x] + cos * X2Data[x]
+                    )
+                val p1 = Point(-sin * h + offset.x, -cos * h + offset.y)
+                val p3 = Point(-cos * w + offset.x, sin * w + offset.y)
+                val center = Point(0.5 * (p1.x + p3.x), 0.5 * (p1.y + p3.y))
+
+                val textDetection =
+                    RotatedRect(
+                        center,
+                        Size(w.toDouble(), h.toDouble()),
+                        (-1 * angle * 180.0 / Math.PI)
+                    )
+                detectedRotatedRects.add(textDetection)
+                detectedConfidences.add(detectionScoreData[x])
+            }
+        }
+
+        // NMS
+        val detectedConfidencesMat = MatOfFloat(vector_float_to_Mat(detectedConfidences))
+        val boundingBoxesMat = MatOfRotatedRect(vector_RotatedRect_to_Mat(detectedRotatedRects))
+        val indicesMat = MatOfInt()
+
+        NMSBoxesRotated(
+            boundingBoxesMat,
+            detectedConfidencesMat,
+            0.5f,
+            0.4f,
+            indicesMat
+        )
+
+        // Dibujar
+        val bitmapWithBoundingBoxes = bitmap.copy(Bitmap.Config.ARGB_8888, true)
+        val canvas = Canvas(bitmapWithBoundingBoxes)
+        val paint = Paint().apply {
+            color = android.graphics.Color.RED
+            strokeWidth = 10.0f
+            style = Paint.Style.STROKE
+        }
+
+        val recognitionImageHeight = reg_model_h
+        val recognitionImageWidth = reg_model_w
+        val ratioWidth = bitmap.width.toFloat() / input_w.toFloat()
+        val ratioHeight = bitmap.height.toFloat() / input_h.toFloat()
+
+        for (i in indicesMat.toArray()) {
+
+            val boundingBox = boundingBoxesMat.toArray()[i]
+
+            val targetVertices = ArrayList<Point>()
+
+            targetVertices.add(
+                Point(0.toDouble(),
+                    (recognitionImageHeight - 1).toDouble()
+                )
+            )
+            targetVertices.add(
+                Point(
+                    0.toDouble(),
+                    0.toDouble()
+                )
+            )
+            targetVertices.add(
+                Point(
+                    (recognitionImageWidth - 1).toDouble(),
+                    0.toDouble()
+                )
+            )
+            targetVertices.add(
+                Point(
+                    (recognitionImageWidth - 1).toDouble(),
+                    (recognitionImageHeight - 1).toDouble()
+                )
+            )
+
+            val srcVertices = ArrayList<Point>()
+
+            val boundingBoxPointsMat = Mat()
+
+            boxPoints(boundingBox, boundingBoxPointsMat)
+
+            for (j in 0 until 4) {
+                srcVertices.add(
+                    Point(
+                        boundingBoxPointsMat.get(j, 0)[0] * ratioWidth,
+                        boundingBoxPointsMat.get(j, 1)[0] * ratioHeight
+                    )
+                )
+                if (j != 0) {
+                    canvas.drawLine(
+                        (boundingBoxPointsMat.get(j, 0)[0] * ratioWidth).toFloat(),
+                        (boundingBoxPointsMat.get(j, 1)[0] * ratioHeight).toFloat(),
+                        (boundingBoxPointsMat.get(j - 1, 0)[0] * ratioWidth).toFloat(),
+                        (boundingBoxPointsMat.get(j - 1, 1)[0] * ratioHeight).toFloat(),
+                        paint
+                    )
+                }
+            }
+            canvas.drawLine(
+                (boundingBoxPointsMat.get(0, 0)[0] * ratioWidth).toFloat(),
+                (boundingBoxPointsMat.get(0, 1)[0] * ratioHeight).toFloat(),
+                (boundingBoxPointsMat.get(3, 0)[0] * ratioWidth).toFloat(),
+                (boundingBoxPointsMat.get(3, 1)[0] * ratioHeight).toFloat(),
+                paint
+            )
+
+            // Recortar los rectangulos e inferir con el modelo de OCR
+
+            val srcVerticesMat =
+                MatOfPoint2f(srcVertices[0], srcVertices[1], srcVertices[2], srcVertices[3])
+
+            val targetVerticesMat =
+                MatOfPoint2f(targetVertices[0], targetVertices[1], targetVertices[2], targetVertices[3])
+
+            val rotationMatrix = getPerspectiveTransform(srcVerticesMat, targetVerticesMat)
+
+            val recognitionBitmapMat = Mat()
+            val srcBitmapMat = Mat()
+
+            bitmapToMat(bitmap, srcBitmapMat)
+
+            warpPerspective(
+                srcBitmapMat,
+                recognitionBitmapMat,
+                rotationMatrix,
+                Size(recognitionImageWidth.toDouble(), recognitionImageHeight.toDouble())
+            )
+
+            val recognitionBitmap =
+                Bitmap.createBitmap(
+                    recognitionImageWidth,
+                    recognitionImageHeight,
+                    Bitmap.Config.ARGB_8888
+                )
+
+            matToBitmap(recognitionBitmapMat, recognitionBitmap)
+
+            // Inferir con modelo de OCR
+
+            //val recognitionTensorImage =
+                //ImageUtils.bitmapToTensorImageForRecognition(
+                    //recognitionBitmap,
+                    //recognitionImageWidth,
+                    //recognitionImageHeight,
+                    //recognitionImageMean,
+                    //recognitionImageStd
+                //)
+
+            //recognitionResult.rewind()
+            //recognitionInterpreter.run(recognitionTensorImage.buffer, recognitionResult)
+
+            //var recognizedText = ""
+            //for (k in 0 until recognitionModelOutputSize) {
+                //var alphabetIndex = recognitionResult.getInt(k * 8)
+                //if (alphabetIndex in 0..alphabets.length - 1)
+                    //recognizedText = recognizedText + alphabets[alphabetIndex]
+            //}
+            //Log.d("Recognition result:", recognizedText)
+            //if (recognizedText != "") {
+                //ocrResults.put(recognizedText, getRandomColor())
+            //}
+        }
+
+        return bitmapWithBoundingBoxes
+    }
 
     private fun detectObjectsAndPaint(bitmap: Bitmap) : Bitmap {
 
