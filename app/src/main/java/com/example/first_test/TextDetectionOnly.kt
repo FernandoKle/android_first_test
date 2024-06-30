@@ -66,23 +66,6 @@ import com.example.first_test.ml.East640Dr
 import com.example.first_test.ml.RosettaDr
 import com.example.first_test.ui.theme.First_testTheme
 import kotlinx.coroutines.delay
-import org.opencv.android.OpenCVLoader
-import org.opencv.android.Utils.bitmapToMat
-import org.opencv.android.Utils.matToBitmap
-import org.opencv.core.Mat
-import org.opencv.core.MatOfFloat
-import org.opencv.core.MatOfInt
-import org.opencv.core.MatOfPoint2f
-import org.opencv.core.MatOfRotatedRect
-import org.opencv.core.Point
-import org.opencv.core.RotatedRect
-import org.opencv.core.Size
-import org.opencv.dnn.Dnn.NMSBoxesRotated
-import org.opencv.imgproc.Imgproc.boxPoints
-import org.opencv.imgproc.Imgproc.getPerspectiveTransform
-import org.opencv.imgproc.Imgproc.warpPerspective
-import org.opencv.utils.Converters.vector_RotatedRect_to_Mat
-import org.opencv.utils.Converters.vector_float_to_Mat
 import org.tensorflow.lite.support.common.ops.NormalizeOp
 import org.tensorflow.lite.support.image.ImageProcessor
 import org.tensorflow.lite.support.image.TensorImage
@@ -210,7 +193,7 @@ class TextDetectionOnly : ComponentActivity() {
                 }
 
                 // Iniciar OpenCV
-                OpenCVLoader.initLocal()
+                // OpenCVLoader.initLocal()
 
             } catch (e: Exception) {
                 Log.e("Object Detection", "Error loading model", e)
@@ -559,6 +542,7 @@ class TextDetectionOnly : ComponentActivity() {
     }
 
 
+    /*
     private fun detectObjectsAndPaintV2(bitmap: Bitmap) : Bitmap {
 
         val tensorBitmap = TensorImage.fromBitmap(bitmap)
@@ -800,6 +784,7 @@ class TextDetectionOnly : ComponentActivity() {
 
         return bitmapWithBoundingBoxes
     }
+    */
 
     private fun detectObjectsAndPaint(bitmap: Bitmap) : Bitmap {
 

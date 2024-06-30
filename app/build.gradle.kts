@@ -102,16 +102,6 @@ dependencies {
     //implementation("com.github.sacv081c:cpufeatures:1.0.4")
 
     // Tensorflow
-    //implementation(libs.tensorflow.lite)
-    //implementation(libs.tensorflow.lite.support)
-    //implementation(libs.tensorflow.lite.metadata)
-    //implementation(libs.tensorflow.lite.gpu)
-
-    //implementation("org.tensorflow:tensorflow-lite-task-vision") //:0.4.0
-    // que tan gordo puede ser...
-    //implementation("org.tensorflow/tensorflow-lite-select-tf-ops:2.16.1")
-    //implementation("pkg:maven/org.tensorflow/tensorflow-lite-select-tf-ops@2.16.1")
-
     implementation("org.tensorflow:tensorflow-lite:2.16.1")
     implementation("org.tensorflow:tensorflow-lite-api:2.16.1")
     implementation("org.tensorflow:tensorflow-lite-gpu:2.16.1")
@@ -119,12 +109,12 @@ dependencies {
     implementation("org.tensorflow:tensorflow-lite-gpu-delegate-plugin:0.4.4")
     implementation("org.tensorflow:tensorflow-lite-support:0.4.4")
     implementation("org.tensorflow:tensorflow-lite-metadata:0.4.4")
+
     // The FAT one
-    implementation("org.tensorflow:tensorflow-lite-select-tf-ops:2.16.1")
+    //implementation("org.tensorflow:tensorflow-lite-select-tf-ops:2.16.1")
 
     // OpenCV - Otro gordo mas a la lista...
-    implementation("org.opencv:opencv:4.10.0")
-    //implementation("ai.eye2you:opencv-android:4.5.2")
+    //implementation("org.opencv:opencv:4.10.0")
 
     // image from URL ?
     implementation("io.coil-kt:coil-compose:2.2.2")
