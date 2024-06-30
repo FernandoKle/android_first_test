@@ -57,15 +57,20 @@ import com.example.first_test.ui.theme.First_testTheme
 import org.opencv.android.OpenCVLoader
 import org.opencv.android.Utils.bitmapToMat
 import org.opencv.android.Utils.matToBitmap
+import org.opencv.core.Core
+import org.opencv.core.CvType
 import org.opencv.core.Mat
 import org.opencv.core.MatOfFloat
 import org.opencv.core.MatOfInt
+import org.opencv.core.MatOfPoint
 import org.opencv.core.MatOfPoint2f
 import org.opencv.core.MatOfRotatedRect
 import org.opencv.core.Point
+import org.opencv.core.Rect
 import org.opencv.core.RotatedRect
 import org.opencv.core.Size
 import org.opencv.dnn.Dnn.NMSBoxesRotated
+import org.opencv.imgproc.Imgproc
 import org.opencv.imgproc.Imgproc.boxPoints
 import org.opencv.imgproc.Imgproc.getPerspectiveTransform
 import org.opencv.imgproc.Imgproc.warpPerspective
@@ -309,8 +314,8 @@ class TextDetectionOnly : ComponentActivity() {
                             onClick = {
                                 bitmap?.let {
                                     val time = measureTimeMillis {
-                                        //paintedBitmap = detectObjectsAndPaint(it)
-                                        paintedBitmap = detectObjectsAndPaintV2(it)
+                                        paintedBitmap = detectObjectsAndPaint(it)
+                                        //paintedBitmap = detectObjectsAndPaintV2(it)
                                     }
                                     detected = true
                                     Log.d("INFERENCIA", "Tomo: $time [ms]")
@@ -345,7 +350,7 @@ class TextDetectionOnly : ComponentActivity() {
                     modifier = Modifier.fillMaxWidth()
                 ){
                     RainbowButton ({
-                        val intent = Intent(context, RealTimeDetectionTF::class.java)
+                        val intent = Intent(context, RealTimeOCR::class.java)
                         ContextCompat.startActivity(context, intent, null)
                     },
                         text = "LIVE"
@@ -375,8 +380,8 @@ class TextDetectionOnly : ComponentActivity() {
                                 .fillMaxWidth()
                                 .clickable {
                                     val time = measureTimeMillis {
-                                        //paintedBitmap = detectObjectsAndPaint(it)
-                                        paintedBitmap = detectObjectsAndPaintV2(it)
+                                        paintedBitmap = detectObjectsAndPaint(it)
+                                        //paintedBitmap = detectObjectsAndPaintV2(it)
                                     }
                                     detected = true
                                     Log.d("INFERENCIA", "Tomo: $time [ms]")
@@ -388,6 +393,89 @@ class TextDetectionOnly : ComponentActivity() {
         }
     }
 
+    private fun detectObjectsAndPaintWithCRAFT(bitmap: Bitmap) : Bitmap {
+
+        val tensorBitmap = TensorImage.fromBitmap(bitmap)
+
+        val input = processor.process(tensorBitmap)
+
+        val outputsBuffer = module.process(input.tensorBuffer)
+
+        // Salidas del modelo esperadas
+        // EAST scores: (1, h/4, w/4, 1), geometry: (1, h/4, w/4, 5)
+        val scores_array   = outputsBuffer.outputFeature0AsTensorBuffer.floatArray
+        val geometry_array = outputsBuffer.outputFeature1AsTensorBuffer.floatArray
+
+        // Almacenar en forma de matriz
+        val scores = Array(output_h) { FloatArray(output_w) }
+        val geometry = Array(output_h) { Array(output_w) { FloatArray(5) } }
+
+        // Copiar los datos... Esto no se ve eficiente...
+        for (i in 0 until output_h) {
+            for (j in 0 until output_w) {
+
+                for (k in 0 until 5) {
+                    geometry[i][j][k] = geometry_array[ (i * output_w + j) * 5 + k ]
+                }
+                scores[i][j] = scores_array[ i * output_w + j ]
+            }
+        }
+
+        val results = processEastOutputs(
+            scores,
+            geometry,
+            bitmap.width.toFloat() / input_w.toFloat(),
+            bitmap.height.toFloat() / input_h.toFloat()
+        )
+
+        return paintDetectionResults(results, bitmap)
+    }
+
+    // Procesar las salidas del modelo CRAFT para obtener los Rect
+    fun processCraftOutputs(scoreMap: Array<Array<FloatArray>>, linkMap: Array<Array<FloatArray>>): List<Rect> {
+        val threshold = 0.7f
+        val linkThreshold = 0.4f
+        val boxes = mutableListOf<Rect>()
+
+        val scoreMat = Mat(scoreMap.size, scoreMap[0].size, CvType.CV_32F)
+        for (i in scoreMap.indices) {
+            for (j in scoreMap[i].indices) {
+                scoreMat.put(i, j, scoreMap[i][j])
+            }
+        }
+
+        val linkMat = Mat(linkMap.size, linkMap[0].size, CvType.CV_32F)
+        for (i in linkMap.indices) {
+            for (j in linkMap[i].indices) {
+                linkMat.put(i, j, linkMap[i][j])
+            }
+        }
+
+        // Aplicar umbral al scoreMap y linkMap
+        val binaryScoreMat = Mat()
+        Imgproc.threshold(scoreMat, binaryScoreMat, threshold.toDouble(), 1.0, Imgproc.THRESH_BINARY)
+
+        val binaryLinkMat = Mat()
+        Imgproc.threshold(linkMat, binaryLinkMat, linkThreshold.toDouble(), 1.0, Imgproc.THRESH_BINARY)
+
+        // Combinar scoreMap y linkMap
+        val combinedMat = Mat()
+        Core.add(binaryScoreMat, binaryLinkMat, combinedMat)
+        Imgproc.threshold(combinedMat, combinedMat, 1.0, 1.0, Imgproc.THRESH_BINARY)
+
+        // Encontrar contornos
+        val contours = mutableListOf<MatOfPoint>()
+        val hierarchy = Mat()
+        Imgproc.findContours(combinedMat, contours, hierarchy, Imgproc.RETR_EXTERNAL, Imgproc.CHAIN_APPROX_SIMPLE)
+
+        // Convertir contornos en Rect
+        for (contour in contours) {
+            val rect = Imgproc.boundingRect(contour)
+            boxes.add(rect)
+        }
+
+        return boxes
+    }
 
     private fun detectObjectsAndPaintV2(bitmap: Bitmap) : Bitmap {
 
@@ -799,6 +887,28 @@ class TextDetectionOnly : ComponentActivity() {
         return mutableBitmap
     }
 
+    private fun paintDetectionResultsV2(results: List<org.opencv.core.Rect>, bitmap: Bitmap) : Bitmap {
+
+        val scale : Float = bitmap.width / 1000f
+
+        val mutableBitmap = bitmap.copy(Bitmap.Config.ARGB_8888, true)
+        val canvas = Canvas(mutableBitmap)
+        val paint = Paint().apply {
+            color = android.graphics.Color.RED
+            strokeWidth = 2.0f * scale
+            style = Paint.Style.STROKE
+        }
+
+        Log.d("DIBUJANDO", "Bitmap w: ${bitmap.width}, h: ${bitmap.height}")
+
+        for (rect in results) {
+
+            canvas.drawRect(rect.toRect(), paint)
+        }
+
+        return mutableBitmap
+    }
+
     // Cosas para poder usar la camara...
     private fun createImageFileUri(context: Context): Uri {
         val imageFile = File(
@@ -811,4 +921,8 @@ class TextDetectionOnly : ComponentActivity() {
             imageFile
         )
     }
+}
+
+private fun org.opencv.core.Rect.toRect(): android.graphics.Rect {
+    return android.graphics.Rect( x, y, x + width, y + height )
 }

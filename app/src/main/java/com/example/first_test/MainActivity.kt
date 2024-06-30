@@ -168,7 +168,7 @@ fun TextInputScreen() {
                 horizontalArrangement = Arrangement.Center,
             ){
                 NavigateButton(
-                    activity = RealTimeOCR::class,
+                    activity = TextDetectionOnly::class,
                     text = "OCR"
                 )
             }
