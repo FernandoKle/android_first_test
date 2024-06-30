@@ -105,8 +105,8 @@ class RealTimeOCR : ComponentActivity(), SensorEventListener {
                 .add(ResizeOp(input_h, input_w, ResizeOp.ResizeMethod.BILINEAR))
                 .add(TransformToGrayscaleOp())
                 // 0~255 a 0~1 ==> Hace: (valor - mean) / stddev
-                //.add(NormalizeOp(127.5f, 127.5f)) // Rosetta
-                .add(NormalizeOp(0f, 255f)) // Keras OCR
+                .add(NormalizeOp(127.5f, 127.5f)) // Rosetta
+                //.add(NormalizeOp(0f, 255f)) // Keras OCR
                 .build()
 
             // CPU y yolov5s F16
@@ -151,7 +151,7 @@ class RealTimeOCR : ComponentActivity(), SensorEventListener {
 
             }
 
-            // Cargar clases
+            // Cargar tokens
             BufferedReader(InputStreamReader(assets.open("rosetta-tokens.txt"))).use { br ->
                 tokens = br.readLines()
             }
@@ -270,6 +270,9 @@ class RealTimeOCR : ComponentActivity(), SensorEventListener {
                             // Recorte
                             val w = newBitmap.width
                             val h = newBitmap.height
+
+                            val input_w = input_w * 2
+                            val input_h = input_h * 2
 
                             val x = ( w/2 - input_w/2 ).toInt()
                             val y = ( 0.2f * h ).toInt()
@@ -516,7 +519,7 @@ class RealTimeOCR : ComponentActivity(), SensorEventListener {
         val canvas = Canvas(mutableBitmap)
         val paint = Paint().apply {
             color = android.graphics.Color.RED
-            strokeWidth = 2.0f * scale
+            strokeWidth = 4.0f * scale
             style = Paint.Style.STROKE
         }
         val textPaint = Paint().apply {
@@ -524,6 +527,9 @@ class RealTimeOCR : ComponentActivity(), SensorEventListener {
             textSize = 35f * scale //30f
             style = Paint.Style.FILL
         }
+
+        val input_w = input_w * 2
+        val input_h = input_h * 2
 
         val x = ( w/2 - input_w/2 ).toFloat()
         val y = 0.2f * h

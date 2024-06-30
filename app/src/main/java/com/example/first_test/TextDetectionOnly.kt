@@ -27,6 +27,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -35,11 +36,19 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -48,29 +57,27 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import com.example.first_test.ml.East640Dr
+import com.example.first_test.ml.RosettaDr
 import com.example.first_test.ui.theme.First_testTheme
+import kotlinx.coroutines.delay
 import org.opencv.android.OpenCVLoader
 import org.opencv.android.Utils.bitmapToMat
 import org.opencv.android.Utils.matToBitmap
-import org.opencv.core.Core
-import org.opencv.core.CvType
 import org.opencv.core.Mat
 import org.opencv.core.MatOfFloat
 import org.opencv.core.MatOfInt
-import org.opencv.core.MatOfPoint
 import org.opencv.core.MatOfPoint2f
 import org.opencv.core.MatOfRotatedRect
 import org.opencv.core.Point
-import org.opencv.core.Rect
 import org.opencv.core.RotatedRect
 import org.opencv.core.Size
 import org.opencv.dnn.Dnn.NMSBoxesRotated
-import org.opencv.imgproc.Imgproc
 import org.opencv.imgproc.Imgproc.boxPoints
 import org.opencv.imgproc.Imgproc.getPerspectiveTransform
 import org.opencv.imgproc.Imgproc.warpPerspective
@@ -80,11 +87,14 @@ import org.tensorflow.lite.support.common.ops.NormalizeOp
 import org.tensorflow.lite.support.image.ImageProcessor
 import org.tensorflow.lite.support.image.TensorImage
 import org.tensorflow.lite.support.image.ops.ResizeOp
+import org.tensorflow.lite.support.image.ops.TransformToGrayscaleOp
 import org.tensorflow.lite.support.model.Model
 import java.io.BufferedReader
 import java.io.File
 import java.io.IOException
 import java.io.InputStreamReader
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
 import kotlin.math.cos
 import kotlin.math.max
 import kotlin.math.min
@@ -95,11 +105,19 @@ class TextDetectionOnly : ComponentActivity() {
 
     private data class Result(
         val score: Float,
-        val rect: RectF
+        val rect: RectF,
+        var text: String
     )
+
+    private val executor: ExecutorService = Executors.newSingleThreadExecutor()
+
+    private lateinit var listOfTextDetectionResults: List<Result>
 
     private lateinit var module: East640Dr
     private lateinit var processor: ImageProcessor
+
+    private lateinit var regModule: RosettaDr
+    private lateinit var regProcessor: ImageProcessor
 
     private val input_w = 640
     private val input_h = 640
@@ -109,80 +127,116 @@ class TextDetectionOnly : ComponentActivity() {
     private val reg_model_w: Int = 100
     private val reg_model_h: Int = 32
 
-    private var classes: List<String>? = null
+    private var tokens: List<String>? = null
+
     private var photoUri: Uri? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            ObjectDetectionApp()
+            First_testTheme {
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = MaterialTheme.colorScheme.background
+                ){
+                    SplashScreen { showMainScreen() }
+                }
+            }
         }
 
-        try {
-
-            val mean = floatArrayOf(103.94f, 116.78f, 123.68f)
-            val stddev = floatArrayOf(1f, 1f, 1f)
-
-            processor = ImageProcessor.Builder()
-                .add(ResizeOp(input_h, input_w, ResizeOp.ResizeMethod.BILINEAR))
-                .add(NormalizeOp(mean, stddev)) // 0~255 a -1~1
-                .build()
-
-            Log.i("MODEL", "Cargando Modelo")
+        executor.execute(){
             try {
-                val builder = Model.Options.Builder()
-                    .setDevice(Model.Device.GPU)
-                    .setNumThreads(4)
+
+                val mean = floatArrayOf(103.94f, 116.78f, 123.68f)
+                val stddev = floatArrayOf(1f, 1f, 1f)
+
+                processor = ImageProcessor.Builder()
+                    .add(ResizeOp(input_h, input_w, ResizeOp.ResizeMethod.BILINEAR))
+                    .add(NormalizeOp(mean, stddev)) // 0~255 a -1~1
                     .build()
 
-                module = East640Dr.newInstance(this, builder)
+                regProcessor = ImageProcessor.Builder()
+                    .add(ResizeOp(reg_model_h, reg_model_w, ResizeOp.ResizeMethod.BILINEAR))
+                    .add(TransformToGrayscaleOp())
+                    // 0~255 a 0~1 ==> Hace: (valor - mean) / stddev
+                    .add(NormalizeOp(127.5f, 127.5f)) // Rosetta
+                    //.add(NormalizeOp(0f, 255f)) // Keras OCR
+                    .build()
 
-                Log.i("MODEL", "Utilizando GPU")
-
-            }
-            catch (e: Exception){
-                Log.e("MODEL", "Error al utilizar la GPU:", e)
+                Log.i("MODEL", "Cargando Modelo")
                 try {
                     val builder = Model.Options.Builder()
-                        .setDevice(Model.Device.NNAPI)
+                        .setDevice(Model.Device.GPU)
                         .setNumThreads(4)
                         .build()
 
                     module = East640Dr.newInstance(this, builder)
+                    regModule = RosettaDr.newInstance(this, builder)
 
-                    Log.i("MODEL", "Utilizando NNAPI")
+                    Log.i("MODEL", "Utilizando GPU")
+
                 }
                 catch (e: Exception){
-                    Log.e("MODEL", "Error al utilizar NNAPI:", e)
-                    val builder = Model.Options.Builder()
-                        .setDevice(Model.Device.CPU)
-                        .setNumThreads(4)
-                        .build()
+                    Log.e("MODEL", "Error al utilizar la GPU:", e)
+                    try {
+                        val builder = Model.Options.Builder()
+                            .setDevice(Model.Device.NNAPI)
+                            .setNumThreads(4)
+                            .build()
 
-                    module = East640Dr.newInstance(this, builder)
+                        module = East640Dr.newInstance(this, builder)
+                        regModule = RosettaDr.newInstance(this, builder)
 
-                    Log.i("MODEL", "Utilizando CPU")
+                        Log.i("MODEL", "Utilizando NNAPI")
+                    }
+                    catch (e: Exception){
+                        Log.e("MODEL", "Error al utilizar NNAPI:", e)
+                        val builder = Model.Options.Builder()
+                            .setDevice(Model.Device.CPU)
+                            .setNumThreads(4)
+                            .build()
+
+                        module = East640Dr.newInstance(this, builder)
+                        regModule = RosettaDr.newInstance(this, builder)
+
+                        Log.i("MODEL", "Utilizando CPU")
+                    }
+
                 }
 
+                // Cargar tokens
+                BufferedReader(InputStreamReader(assets.open("rosetta-tokens.txt"))).use { br ->
+                    tokens = br.readLines()
+                }
+
+                // Iniciar OpenCV
+                OpenCVLoader.initLocal()
+
+            } catch (e: Exception) {
+                Log.e("Object Detection", "Error loading model", e)
             }
-
-
-            BufferedReader(InputStreamReader(assets.open("classes.txt"))).use { br ->
-                classes = br.readLines()
-            }
-
-            // Iniciar OpenCV
-            OpenCVLoader.initLocal()
-
-        } catch (e: Exception) {
-            Log.e("Object Detection", "Error loading model or classes", e)
         }
     }
 
     override fun onDestroy() {
         super.onDestroy()
 
+        executor.shutdown()
         module.close()
+        regModule.close()
+    }
+
+    private fun showMainScreen() {
+        setContent {
+            First_testTheme {
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = MaterialTheme.colorScheme.background
+                ) {
+                    ObjectDetectionApp()
+                }
+            }
+        }
     }
 
     private fun assetFilePath(context: Context, assetName: String): String {
@@ -236,12 +290,55 @@ class TextDetectionOnly : ComponentActivity() {
     }
 
     @Composable
+    fun SplashScreen(onComplete: () -> Unit) {
+        var progress by remember { mutableFloatStateOf(0f) }
+        var isLoading by remember { mutableStateOf(true) }
+
+        LaunchedEffect(Unit) {
+            while (progress < 1f) {
+                delay(50)
+                progress += 0.01f
+            }
+            isLoading = false
+            onComplete()
+        }
+
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = "Cargando...",
+                    fontSize = 24.sp,
+                    color = Color.Green,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(16.dp)
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+                LinearProgressIndicator(
+                    progress = progress,
+                    modifier = Modifier.fillMaxWidth(0.8f)
+                )
+            }
+        }
+    }
+
+    @Composable
     fun ObjectDetectionApp() {
         First_testTheme {
+
+            // NADA de corrutinas por aca :p
+            // val coroutineScope = rememberCoroutineScope()
 
             var bitmap by remember { mutableStateOf<Bitmap?>(null) }
             var paintedBitmap by remember { mutableStateOf<Bitmap?>(null) }
             var detected by remember  { mutableStateOf(false) }
+            var doneOCR by remember  { mutableStateOf(false) }
+            var finalText by remember  { mutableStateOf("") }
+            var isRunning by remember { mutableStateOf(false) }
 
             val context = LocalContext.current
 
@@ -260,12 +357,9 @@ class TextDetectionOnly : ComponentActivity() {
                 ) { success ->
                     if (success) {
                         photoUri?.let {
-                            //bitmap = BitmapFactory.decodeStream(context.contentResolver.openInputStream(it))
                             val auxBitmap = BitmapFactory.decodeStream(context.contentResolver.openInputStream(it))
-                            //processImage(bitmap, context) { result ->
-                            //    className = result
-                            //}
                             val matrix = Matrix().apply { postRotate(90f) }
+
                             bitmap = Bitmap.createBitmap(auxBitmap, 0, 0, auxBitmap.width, auxBitmap.height, matrix, true)
                             detected = false
                         }
@@ -299,6 +393,7 @@ class TextDetectionOnly : ComponentActivity() {
                     modifier = Modifier.fillMaxWidth()
                         //.offset(x = 30.dp)
                 ) {
+
                     Button(
                         onClick = {
                             imagePicker.launch("image/*")
@@ -309,23 +404,17 @@ class TextDetectionOnly : ComponentActivity() {
                         Text(text = "Elegir \nImagen")
                     }
                     Spacer(modifier = Modifier.width(16.dp))
-                    Column {
-                        Button(
-                            onClick = {
-                                bitmap?.let {
-                                    val time = measureTimeMillis {
-                                        paintedBitmap = detectObjectsAndPaint(it)
-                                        //paintedBitmap = detectObjectsAndPaintV2(it)
-                                    }
-                                    detected = true
-                                    Log.d("INFERENCIA", "Tomo: $time [ms]")
-                                }
-                            }
-                        ) {
-                            Text(text = "Analizar")
-                        }
+
+                    Button(
+                        onClick = {
+                            val intent = Intent(context, RealTimeOCR::class.java)
+                            ContextCompat.startActivity(context, intent, null)
+                        },
+                    ) {
+                        Text(text = "LIVE")
                     }
                     Spacer(modifier = Modifier.width(16.dp))
+
                     Button(
                         onClick = {
                             when (PackageManager.PERMISSION_GRANTED) {
@@ -345,137 +434,130 @@ class TextDetectionOnly : ComponentActivity() {
                     }
                 }
                 Spacer(modifier = Modifier.height(16.dp))
+
                 Row (
                     horizontalArrangement = Arrangement.Center,
                     modifier = Modifier.fillMaxWidth()
                 ){
-                    RainbowButton ({
-                        val intent = Intent(context, RealTimeOCR::class.java)
-                        ContextCompat.startActivity(context, intent, null)
-                    },
-                        text = "LIVE"
-                    )
-                }
-                Spacer(modifier = Modifier.height(16.dp))
+                    Button(
+                        onClick = {
+                            bitmap?.let {
 
-                if (detected){
-                    paintedBitmap?.let {
-                        Image(
-                            bitmap = it.asImageBitmap(),
-                            contentDescription = null,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    detected = false
-                                }
-                        )
-                    }
-                }
-                else{
-                    bitmap?.let {
-                        Image(
-                            bitmap = it.asImageBitmap(),
-                            contentDescription = null,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
+                                Toast.makeText(
+                                    context,
+                                    "Analizando...",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+
+                                isRunning = true
+
+                                executor.execute() {
                                     val time = measureTimeMillis {
                                         paintedBitmap = detectObjectsAndPaint(it)
                                         //paintedBitmap = detectObjectsAndPaintV2(it)
+
+                                        isRunning = false
                                     }
                                     detected = true
                                     Log.d("INFERENCIA", "Tomo: $time [ms]")
                                 }
-                        )
+
+                            }
+                        }
+                    ) {
+                        Text(text = "Detectar Texto")
+                    }
+                    Spacer(modifier = Modifier.width(30.dp))
+
+                    Button(
+                        onClick = {
+                            bitmap?.let {
+
+                                Toast.makeText(
+                                    context,
+                                    "Procesando ${listOfTextDetectionResults.size} resultados",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+
+                                isRunning = true
+
+                                executor.execute(){
+                                    val time = measureTimeMillis {
+                                        if (listOfTextDetectionResults.isNotEmpty()){
+
+                                            resultsToString(it)
+                                            paintedBitmap = paintDetectionResultsAndText(it)
+
+                                            finalText = ""
+                                            for (result in listOfTextDetectionResults){
+                                                finalText += result.text + "\n"
+                                            }
+
+                                            doneOCR = true
+                                        }
+                                        isRunning = false
+                                    }
+                                    Log.d("OCR", "Tomo: $time [ms]")
+                                }
+                            } ?: run {
+                                Toast.makeText(context, "Primero analice una imagen", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    ) {
+                        Text(text = "Realizar OCR")
                     }
                 }
-            }
-        }
-    }
+                Spacer(modifier = Modifier.height(16.dp))
 
-    private fun detectObjectsAndPaintWithCRAFT(bitmap: Bitmap) : Bitmap {
-
-        val tensorBitmap = TensorImage.fromBitmap(bitmap)
-
-        val input = processor.process(tensorBitmap)
-
-        val outputsBuffer = module.process(input.tensorBuffer)
-
-        // Salidas del modelo esperadas
-        // EAST scores: (1, h/4, w/4, 1), geometry: (1, h/4, w/4, 5)
-        val scores_array   = outputsBuffer.outputFeature0AsTensorBuffer.floatArray
-        val geometry_array = outputsBuffer.outputFeature1AsTensorBuffer.floatArray
-
-        // Almacenar en forma de matriz
-        val scores = Array(output_h) { FloatArray(output_w) }
-        val geometry = Array(output_h) { Array(output_w) { FloatArray(5) } }
-
-        // Copiar los datos... Esto no se ve eficiente...
-        for (i in 0 until output_h) {
-            for (j in 0 until output_w) {
-
-                for (k in 0 until 5) {
-                    geometry[i][j][k] = geometry_array[ (i * output_w + j) * 5 + k ]
+                if (isRunning){
+                    Spacer(modifier = Modifier.height(30.dp))
+                    CircularProgressIndicator(
+                        modifier = Modifier.padding(50.dp),
+                        color = Color(255,0,255)
+                    )
                 }
-                scores[i][j] = scores_array[ i * output_w + j ]
+                else{
+                    if (detected){
+                        paintedBitmap?.let {
+                            Image(
+                                bitmap = it.asImageBitmap(),
+                                contentDescription = null,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        detected = !detected
+                                    }
+                            )
+                        }
+                    }
+                    else{
+                        bitmap?.let {
+                            Image(
+                                bitmap = it.asImageBitmap(),
+                                contentDescription = null,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        if (paintedBitmap != null) {
+                                            detected = !detected
+                                        }
+                                    }
+                            )
+                        }
+                    }
+
+                }
+
+                // Lista de textos detectados
+                Text(
+                    text = finalText,
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                    color = Color.Green
+                )
             }
         }
-
-        val results = processEastOutputs(
-            scores,
-            geometry,
-            bitmap.width.toFloat() / input_w.toFloat(),
-            bitmap.height.toFloat() / input_h.toFloat()
-        )
-
-        return paintDetectionResults(results, bitmap)
     }
 
-    // Procesar las salidas del modelo CRAFT para obtener los Rect
-    fun processCraftOutputs(scoreMap: Array<Array<FloatArray>>, linkMap: Array<Array<FloatArray>>): List<Rect> {
-        val threshold = 0.7f
-        val linkThreshold = 0.4f
-        val boxes = mutableListOf<Rect>()
-
-        val scoreMat = Mat(scoreMap.size, scoreMap[0].size, CvType.CV_32F)
-        for (i in scoreMap.indices) {
-            for (j in scoreMap[i].indices) {
-                scoreMat.put(i, j, scoreMap[i][j])
-            }
-        }
-
-        val linkMat = Mat(linkMap.size, linkMap[0].size, CvType.CV_32F)
-        for (i in linkMap.indices) {
-            for (j in linkMap[i].indices) {
-                linkMat.put(i, j, linkMap[i][j])
-            }
-        }
-
-        // Aplicar umbral al scoreMap y linkMap
-        val binaryScoreMat = Mat()
-        Imgproc.threshold(scoreMat, binaryScoreMat, threshold.toDouble(), 1.0, Imgproc.THRESH_BINARY)
-
-        val binaryLinkMat = Mat()
-        Imgproc.threshold(linkMat, binaryLinkMat, linkThreshold.toDouble(), 1.0, Imgproc.THRESH_BINARY)
-
-        // Combinar scoreMap y linkMap
-        val combinedMat = Mat()
-        Core.add(binaryScoreMat, binaryLinkMat, combinedMat)
-        Imgproc.threshold(combinedMat, combinedMat, 1.0, 1.0, Imgproc.THRESH_BINARY)
-
-        // Encontrar contornos
-        val contours = mutableListOf<MatOfPoint>()
-        val hierarchy = Mat()
-        Imgproc.findContours(combinedMat, contours, hierarchy, Imgproc.RETR_EXTERNAL, Imgproc.CHAIN_APPROX_SIMPLE)
-
-        // Convertir contornos en Rect
-        for (contour in contours) {
-            val rect = Imgproc.boundingRect(contour)
-            boxes.add(rect)
-        }
-
-        return boxes
-    }
 
     private fun detectObjectsAndPaintV2(bitmap: Bitmap) : Bitmap {
 
@@ -754,6 +836,8 @@ class TextDetectionOnly : ComponentActivity() {
             bitmap.height.toFloat() / input_h.toFloat()
         )
 
+        listOfTextDetectionResults = results
+
         return paintDetectionResults(results, bitmap)
     }
 
@@ -805,7 +889,8 @@ class TextDetectionOnly : ComponentActivity() {
                             startY * rH,
                             (endX) * rW,
                             (endY) * rH,
-                            )
+                            ),
+                        text = ""
                         )
                     )
                 }
@@ -878,32 +963,39 @@ class TextDetectionOnly : ComponentActivity() {
         Log.d("DIBUJANDO", "Bitmap w: ${bitmap.width}, h: ${bitmap.height}")
 
         for (result in results) {
-
-            //Log.d("DIBUJANDO", "(${result.rect.left.toInt()}, ${result.rect.top.toInt()}),  (${result.rect.right.toInt()}, ${result.rect.bottom.toInt()})")
-
             canvas.drawRect(result.rect, paint)
         }
 
         return mutableBitmap
     }
 
-    private fun paintDetectionResultsV2(results: List<org.opencv.core.Rect>, bitmap: Bitmap) : Bitmap {
+    private fun paintDetectionResultsAndText(bitmap: Bitmap) : Bitmap {
 
         val scale : Float = bitmap.width / 1000f
 
         val mutableBitmap = bitmap.copy(Bitmap.Config.ARGB_8888, true)
         val canvas = Canvas(mutableBitmap)
+
         val paint = Paint().apply {
             color = android.graphics.Color.RED
             strokeWidth = 2.0f * scale
             style = Paint.Style.STROKE
         }
+        val textPaint = Paint().apply {
+            color = android.graphics.Color.GREEN
+            textSize = 30f * scale //30f
+            style = Paint.Style.FILL
+        }
 
-        Log.d("DIBUJANDO", "Bitmap w: ${bitmap.width}, h: ${bitmap.height}")
+        for (result in listOfTextDetectionResults) {
 
-        for (rect in results) {
+            canvas.drawRect(result.rect, paint)
 
-            canvas.drawRect(rect.toRect(), paint)
+            val text = result.text
+            val textX = result.rect.left
+            val textY = result.rect.bottom + textPaint.textSize
+
+            canvas.drawText(text, textX, textY, textPaint)
         }
 
         return mutableBitmap
@@ -921,8 +1013,77 @@ class TextDetectionOnly : ComponentActivity() {
             imageFile
         )
     }
+
+    private fun resultsToString(bitmap: Bitmap){
+        for (result in listOfTextDetectionResults){
+            val regBitmap = cropBitmap(bitmap, result.rect)
+            result.text = doOCR(regBitmap)
+        }
+    }
+
+    fun cropBitmap(bitmap: Bitmap, rect: RectF): Bitmap {
+
+        val offset = 20 //bitmap.width / 1000f
+
+        val left = (rect.left - offset).toInt().coerceAtLeast(0)
+        val top = (rect.top - offset).toInt().coerceAtLeast(0)
+        val width = (rect.width() + offset).toInt().coerceAtMost(bitmap.width - left)
+        val height = (rect.height() + offset).toInt().coerceAtMost(bitmap.height - top)
+
+        return Bitmap.createBitmap(bitmap, left, top, width, height)
+    }
+
+    fun doOCR(bitmap: Bitmap) : String {
+
+        // Inferir
+        val tensorBitmap = TensorImage.fromBitmap(bitmap)
+
+        val input = regProcessor.process(tensorBitmap)
+
+        val outputsBuffer = regModule.process(input.tensorBuffer)
+
+        val outputs = outputsBuffer.outputFeature0AsTensorBuffer.floatArray
+
+        // Procesar resultados
+        return output2string(outputs)
+    }
+
+    private fun output2string(outputs: FloatArray): String {
+
+        var finalText: String = ""
+        val numTokens = tokens?.size ?: 37
+        val numChars = outputs.size / numTokens
+
+        for (i in 0 until numChars) {
+
+            val prediction : FloatArray =
+                outputs.sliceArray((i*numTokens)until (numTokens+i*numTokens))
+
+            val tokenId = argmax(prediction)
+
+            finalText += tokens?.get(tokenId) ?: ""
+        }
+
+        Log.d("OCR", "Detecto: \"${finalText}\"")
+
+        return finalText
+    }
+
+    private fun argmax(array: FloatArray): Int {
+        var maxIdx = 0
+        var maxValue = array[0]
+        for (i in array.indices) {
+            if (array[i] > maxValue) {
+                maxValue = array[i]
+                maxIdx = i
+            }
+        }
+        return maxIdx
+    }
+
+
 }
 
-private fun org.opencv.core.Rect.toRect(): android.graphics.Rect {
-    return android.graphics.Rect( x, y, x + width, y + height )
-}
+//private fun org.opencv.core.Rect.toRect(): android.graphics.Rect {
+//    return android.graphics.Rect( x, y, x + width, y + height )
+//}
