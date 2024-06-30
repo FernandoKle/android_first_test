@@ -52,7 +52,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
-import com.example.first_test.ml.EastFloat640
+import com.example.first_test.ml.East640Dr
 import com.example.first_test.ui.theme.First_testTheme
 import org.opencv.android.OpenCVLoader
 import org.opencv.android.Utils.bitmapToMat
@@ -98,11 +98,11 @@ class TextDetectionOnly : ComponentActivity() {
         val rect: RectF
     )
 
-    private lateinit var module: EastFloat640
+    private lateinit var module: East640Dr
     private lateinit var processor: ImageProcessor
 
     private val input_w = 640
-    private val input_h = 416
+    private val input_h = 640
     private val output_w: Int = input_w / 4
     private val output_h: Int = input_h / 4
 
@@ -120,7 +120,7 @@ class TextDetectionOnly : ComponentActivity() {
 
         try {
 
-            val mean = floatArrayOf(103.94f, 116.78f, 123.68f) // (123.68f, 116.78f, 103.94f)
+            val mean = floatArrayOf(103.94f, 116.78f, 123.68f)
             val stddev = floatArrayOf(1f, 1f, 1f)
 
             processor = ImageProcessor.Builder()
@@ -135,7 +135,7 @@ class TextDetectionOnly : ComponentActivity() {
                     .setNumThreads(4)
                     .build()
 
-                module = EastFloat640.newInstance(this, builder)
+                module = East640Dr.newInstance(this, builder)
 
                 Log.i("MODEL", "Utilizando GPU")
 
@@ -148,7 +148,7 @@ class TextDetectionOnly : ComponentActivity() {
                         .setNumThreads(4)
                         .build()
 
-                    module = EastFloat640.newInstance(this, builder)
+                    module = East640Dr.newInstance(this, builder)
 
                     Log.i("MODEL", "Utilizando NNAPI")
                 }
@@ -159,7 +159,7 @@ class TextDetectionOnly : ComponentActivity() {
                         .setNumThreads(4)
                         .build()
 
-                    module = EastFloat640.newInstance(this, builder)
+                    module = East640Dr.newInstance(this, builder)
 
                     Log.i("MODEL", "Utilizando CPU")
                 }
