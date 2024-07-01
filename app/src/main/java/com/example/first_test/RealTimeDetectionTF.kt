@@ -213,15 +213,15 @@ class RealTimeDetectionTF : ComponentActivity(), SensorEventListener {
         // with t, the low-pass filter's time-constant
         // and dT, the event delivery rate
 
-        val alpha = 0.8f;
+        val alpha = 0.8f
 
-        gravity[0] = alpha * gravity[0] + (1 - alpha) * event.values[0];
-        gravity[1] = alpha * gravity[1] + (1 - alpha) * event.values[1];
-        gravity[2] = alpha * gravity[2] + (1 - alpha) * event.values[2];
+        gravity[0] = alpha * gravity[0] + (1 - alpha) * event.values[0]
+        gravity[1] = alpha * gravity[1] + (1 - alpha) * event.values[1]
+        gravity[2] = alpha * gravity[2] + (1 - alpha) * event.values[2]
 
-        accel[0] = event.values[0] - gravity[0];
-        accel[1] = event.values[1] - gravity[1];
-        accel[2] = event.values[2] - gravity[2];
+        accel[0] = event.values[0] - gravity[0]
+        accel[1] = event.values[1] - gravity[1]
+        accel[2] = event.values[2] - gravity[2]
 
         // Sin filtro
 
@@ -394,7 +394,6 @@ class RealTimeDetectionTF : ComponentActivity(), SensorEventListener {
         isPreviewVisible: Boolean = true,
         modifier: Modifier
     ) {
-        val context = LocalContext.current
         val lifecycleOwner = LocalLifecycleOwner.current
 
         AndroidView(
@@ -477,7 +476,7 @@ class RealTimeDetectionTF : ComponentActivity(), SensorEventListener {
         return Bitmap.createBitmap(this, 0, 0, width, height, matrix, true)
     }
 
-    fun detectObjectsAndPaint(bitmap: Bitmap) : Bitmap? {
+    fun detectObjectsAndPaint(bitmap: Bitmap) : Bitmap {
 
         // No procesar si el dispositivo se esta moviendo
         val accelMag = kotlin.math.sqrt(accel[0].pow(2) + accel[1].pow(2) + accel[2].pow(2))
@@ -558,7 +557,7 @@ class RealTimeDetectionTF : ComponentActivity(), SensorEventListener {
 
         val sortedResults = results.sortedByDescending { it.score }
         val filteredResults = mutableListOf<Result>()
-        val threshold: Float = 0.5f
+        val threshold = 0.5f
 
         for (result in sortedResults) {
             var shouldAdd = true
@@ -622,37 +621,6 @@ class RealTimeDetectionTF : ComponentActivity(), SensorEventListener {
             val textY = result.rect.bottom + textPaint.textSize
             canvas.drawText(text, textX, textY, textPaint)
         }
-
-        return mutableBitmap
-    }
-
-    private fun paintParty(input: Bitmap) : Bitmap {
-
-        val scale : Float = input.width / 1000f // bitmap.width = 900 ~ 3000
-
-        Log.d("Recibio imagen", "w: ${input.width}, h: ${input.height}, scale: $scale")
-
-        val mutableBitmap = input.copy(Bitmap.Config.ARGB_8888, true)
-        val canvas = Canvas(mutableBitmap)
-        val paint = Paint().apply {
-            color = android.graphics.Color.RED
-            strokeWidth = 2.0f * scale
-            style = Paint.Style.STROKE
-        }
-        val textPaint = Paint().apply {
-            color = android.graphics.Color.GREEN
-            textSize = 30f * scale //30f
-            style = Paint.Style.FILL
-        }
-
-        val cuadro = RectF(100f,100f,100f,100f)
-
-        canvas.drawRect(cuadro, paint)
-        // Texto
-        val text = "Apunta el numero aca !"
-        val textX = cuadro.left
-        val textY = cuadro.bottom + textPaint.textSize
-        canvas.drawText(text, textX, textY, textPaint)
 
         return mutableBitmap
     }

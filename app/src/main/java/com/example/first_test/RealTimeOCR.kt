@@ -14,7 +14,6 @@ import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import android.os.Bundle
 import android.util.Log
-import android.util.Size
 import android.view.View
 import android.view.ViewGroup
 import android.view.ViewOutlineProvider
@@ -26,8 +25,6 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.Preview
-import androidx.camera.core.resolutionselector.ResolutionSelector
-import androidx.camera.core.resolutionselector.ResolutionStrategy
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.Image
@@ -214,15 +211,15 @@ class RealTimeOCR : ComponentActivity(), SensorEventListener {
         // with t, the low-pass filter's time-constant
         // and dT, the event delivery rate
 
-        val alpha = 0.8f;
+        val alpha = 0.8f
 
-        gravity[0] = alpha * gravity[0] + (1 - alpha) * event.values[0];
-        gravity[1] = alpha * gravity[1] + (1 - alpha) * event.values[1];
-        gravity[2] = alpha * gravity[2] + (1 - alpha) * event.values[2];
+        gravity[0] = alpha * gravity[0] + (1 - alpha) * event.values[0]
+        gravity[1] = alpha * gravity[1] + (1 - alpha) * event.values[1]
+        gravity[2] = alpha * gravity[2] + (1 - alpha) * event.values[2]
 
-        accel[0] = event.values[0] - gravity[0];
-        accel[1] = event.values[1] - gravity[1];
-        accel[2] = event.values[2] - gravity[2];
+        accel[0] = event.values[0] - gravity[0]
+        accel[1] = event.values[1] - gravity[1]
+        accel[2] = event.values[2] - gravity[2]
 
         // Sin filtro
 
@@ -349,7 +346,7 @@ class RealTimeOCR : ComponentActivity(), SensorEventListener {
                             val input_w = input_w * 2
                             val input_h = input_h * 2
 
-                            val x = ( w/2 - input_w/2 ).toInt()
+                            val x = w/2 - input_w/2
                             val y = ( 0.2f * h ).toInt()
 
                             zoomBitmap = Bitmap.createBitmap(
@@ -444,7 +441,6 @@ class RealTimeOCR : ComponentActivity(), SensorEventListener {
         isPreviewVisible: Boolean = true,
         modifier: Modifier
     ) {
-        val context = LocalContext.current
         val lifecycleOwner = LocalLifecycleOwner.current
 
         AndroidView(
@@ -469,11 +465,11 @@ class RealTimeOCR : ComponentActivity(), SensorEventListener {
                     //    it.setSurfaceProvider(previewView.surfaceProvider)
                     //}
 
-                    val screenSize = Size(200,64)//if (rotation == 0) Size(720, 1280) else Size(1280, 720)
-                    val resolutionSelector = ResolutionSelector.Builder().setResolutionStrategy(
-                        ResolutionStrategy(screenSize,
-                        ResolutionStrategy.FALLBACK_RULE_NONE)
-                    ).build()
+                    //val screenSize = Size(200,64)//if (rotation == 0) Size(720, 1280) else Size(1280, 720)
+                    //val resolutionSelector = ResolutionSelector.Builder().setResolutionStrategy(
+                    //    ResolutionStrategy(screenSize,
+                    //    ResolutionStrategy.FALLBACK_RULE_NONE)
+                    //).build()
 
                     val imageAnalysis = ImageAnalysis.Builder()
                         //.setTargetAspectRatio(AspectRatio.RATIO_4_3)
@@ -551,7 +547,7 @@ class RealTimeOCR : ComponentActivity(), SensorEventListener {
 
     private fun output2string(outputs: FloatArray): String {
 
-        var finalText: String = ""
+        var finalText = ""
         val numTokens = tokens?.size ?: 37
         val numChars = outputs.size / numTokens
 
