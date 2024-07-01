@@ -34,17 +34,24 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -55,10 +62,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import com.example.first_test.ml.RosettaDr
+import com.example.first_test.ui.theme.First_testTheme
+import kotlinx.coroutines.delay
 import org.tensorflow.lite.support.common.ops.NormalizeOp
 import org.tensorflow.lite.support.image.ImageProcessor
 import org.tensorflow.lite.support.image.TensorImage
@@ -67,15 +78,15 @@ import org.tensorflow.lite.support.image.ops.TransformToGrayscaleOp
 import org.tensorflow.lite.support.model.Model
 import java.io.BufferedReader
 import java.io.InputStreamReader
+import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import kotlin.math.pow
 import kotlin.system.measureTimeMillis
 
-//import org.tensorflow.lite.task.core.BaseOptions
-//import org.tensorflow.lite.task.vision.detector.Detection
-//import org.tensorflow.lite.task.vision.detector.ObjectDetector
 
 class RealTimeOCR : ComponentActivity(), SensorEventListener {
+
+    private val executor: ExecutorService = Executors.newSingleThreadExecutor()
 
     private lateinit var module: RosettaDr
     // private lateinit var module: KerasOcrDrNoCtc
@@ -95,92 +106,105 @@ class RealTimeOCR : ComponentActivity(), SensorEventListener {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            MyApp()
+            First_testTheme {
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = MaterialTheme.colorScheme.background
+                ) {
+                    SplashScreen {
+                        showMainScreen()
+                    }
+                }
+            }
         }
 
-        try {
-            /** Initialization */
-
-            processor = ImageProcessor.Builder()
-                .add(ResizeOp(input_h, input_w, ResizeOp.ResizeMethod.BILINEAR))
-                .add(TransformToGrayscaleOp())
-                // 0~255 a 0~1 ==> Hace: (valor - mean) / stddev
-                .add(NormalizeOp(127.5f, 127.5f)) // Rosetta
-                //.add(NormalizeOp(0f, 255f)) // Keras OCR
-                .build()
-
-            // CPU y yolov5s F16
-            // 820 ms con 5 hilos y 900 con 4
-            // en tel de fer
-            // CPU y yolov5n F16
-            /// 500 ms tel de fer
-            Log.i("MODEL", "Cargando Modelo")
+        executor.execute(){
             try {
-                val builder = Model.Options.Builder()
-                    .setDevice(Model.Device.GPU)
-                    .setNumThreads(4)
+                /** Initialization */
+
+                processor = ImageProcessor.Builder()
+                    .add(ResizeOp(input_h, input_w, ResizeOp.ResizeMethod.BILINEAR))
+                    .add(TransformToGrayscaleOp())
+                    // 0~255 a 0~1 ==> Hace: (valor - mean) / stddev
+                    .add(NormalizeOp(127.5f, 127.5f)) // Rosetta
+                    //.add(NormalizeOp(0f, 255f)) // Keras OCR
                     .build()
 
-                module = RosettaDr.newInstance(this, builder)
-
-                Log.i("MODEL", "Utilizando GPU")
-            }
-            catch (e: Exception){
-                Log.e("MODEL", "Error al utilizar la GPU:", e)
+                // CPU y yolov5s F16
+                // 820 ms con 5 hilos y 900 con 4
+                // en tel de fer
+                // CPU y yolov5n F16
+                /// 500 ms tel de fer
+                Log.i("MODEL", "Cargando Modelo")
                 try {
                     val builder = Model.Options.Builder()
-                        .setDevice(Model.Device.NNAPI)
+                        .setDevice(Model.Device.GPU)
                         .setNumThreads(4)
                         .build()
 
                     module = RosettaDr.newInstance(this, builder)
 
-                    Log.i("MODEL", "Utilizando NNAPI")
+                    Log.i("MODEL", "Utilizando GPU")
                 }
                 catch (e: Exception){
-                    Log.e("MODEL", "Error al utilizar NNAPI:", e)
-                    val builder = Model.Options.Builder()
-                        .setDevice(Model.Device.CPU)
-                        .setNumThreads(4)
-                        .build()
+                    Log.e("MODEL", "Error al utilizar la GPU:", e)
+                    try {
+                        val builder = Model.Options.Builder()
+                            .setDevice(Model.Device.NNAPI)
+                            .setNumThreads(4)
+                            .build()
 
-                    module = RosettaDr.newInstance(this, builder)
+                        module = RosettaDr.newInstance(this, builder)
 
-                    Log.i("MODEL", "Utilizando CPU")
+                        Log.i("MODEL", "Utilizando NNAPI")
+                    }
+                    catch (e: Exception){
+                        Log.e("MODEL", "Error al utilizar NNAPI:", e)
+                        val builder = Model.Options.Builder()
+                            .setDevice(Model.Device.CPU)
+                            .setNumThreads(4)
+                            .build()
+
+                        module = RosettaDr.newInstance(this, builder)
+
+                        Log.i("MODEL", "Utilizando CPU")
+                    }
+
+                }
+
+                // Cargar tokens
+                BufferedReader(InputStreamReader(assets.open("rosetta-tokens.txt"))).use { br ->
+                    tokens = br.readLines()
+                }
+            }
+            catch (e: Exception) {
+                Log.e("Object Detection", "Error loading model or classes", e)
+            }
+
+            try {
+                sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
+                sensorAccel = if (sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER) != null) {
+                    // Success! There's an accelerometer.
+                    Log.d("SENSOR", "Accelerometro iniciado")
+                    sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+                }
+                else {
+                    // Failure! No accelerometer.
+                    null
                 }
 
             }
-
-            // Cargar tokens
-            BufferedReader(InputStreamReader(assets.open("rosetta-tokens.txt"))).use { br ->
-                tokens = br.readLines()
-            }
-        }
-        catch (e: Exception) {
-            Log.e("Object Detection", "Error loading model or classes", e)
-        }
-
-        try {
-            sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
-            sensorAccel = if (sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER) != null) {
-                // Success! There's an accelerometer.
-                Log.d("SENSOR", "Accelerometro iniciado")
-                sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
-            }
-            else {
-                // Failure! No accelerometer.
-                null
+            catch (e: Exception) {
+                Log.e("SENSOR", "Error inicializando sensores", e)
             }
 
-        }
-        catch (e: Exception) {
-            Log.e("SENSOR", "Error inicializando sensores", e)
         }
     }
 
     override fun onDestroy() {
         super.onDestroy()
 
+        executor.shutdown()
         module.close()
     }
 
@@ -228,6 +252,57 @@ class RealTimeOCR : ComponentActivity(), SensorEventListener {
     }
 
 // @=============== START MAIN UI ===============@
+
+    private fun showMainScreen() {
+        setContent {
+            First_testTheme {
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = MaterialTheme.colorScheme.background
+                ) {
+                    MyApp()
+                }
+            }
+        }
+    }
+
+    @Composable
+    fun SplashScreen(onComplete: () -> Unit) {
+        var progress by remember { mutableFloatStateOf(0f) }
+        var isLoading by remember { mutableStateOf(true) }
+
+        LaunchedEffect(Unit) {
+            while (progress < 1f) {
+                delay(50)
+                progress += 0.01f
+            }
+            isLoading = false
+            onComplete()
+        }
+
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = "Cargando...",
+                    fontSize = 24.sp,
+                    color = Color.Green,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(16.dp)
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+                LinearProgressIndicator(
+                    progress = progress,
+                    modifier = Modifier.fillMaxWidth(0.8f)
+                )
+            }
+        }
+    }
+
     @Composable
     fun MyApp() {
         val context = LocalContext.current
