@@ -273,7 +273,7 @@ class RealTimeDetectionTF : ComponentActivity(), SensorEventListener {
         LaunchedEffect(Unit) {
             while (progress < 1f) {
                 delay(50)
-                progress += 0.01f
+                progress += 0.03f
             }
             isLoading = false
             onComplete()

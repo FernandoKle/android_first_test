@@ -27,6 +27,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -37,9 +38,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -48,12 +54,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import com.example.first_test.ml.Yolov5sFp16NoNms
 import com.example.first_test.ui.theme.First_testTheme
+import kotlinx.coroutines.delay
 import org.tensorflow.lite.support.common.ops.NormalizeOp
 import org.tensorflow.lite.support.image.ImageProcessor
 import org.tensorflow.lite.support.image.TensorImage
@@ -63,11 +71,15 @@ import java.io.BufferedReader
 import java.io.File
 import java.io.IOException
 import java.io.InputStreamReader
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.system.measureTimeMillis
 
 class YoloActivityTF : ComponentActivity() {
+
+    private val executor: ExecutorService = Executors.newSingleThreadExecutor()
 
     private lateinit var module: Yolov5sFp16NoNms
     private lateinit var processor: ImageProcessor
@@ -78,63 +90,75 @@ class YoloActivityTF : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            ObjectDetectionApp()
+            First_testTheme {
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = MaterialTheme.colorScheme.background
+                ) {
+                    SplashScreen {
+                        showMainScreen()
+                    }
+                }
+            }
         }
 
-        try {
-
-            processor = ImageProcessor.Builder()
-                .add(ResizeOp(640, 640, ResizeOp.ResizeMethod.NEAREST_NEIGHBOR))
-                .add(NormalizeOp(0f, 255f)) // 0~255 a 0~1 ==> Hace: (valor - mean) / stddev
-                .build()
-
-            Log.i("MODEL", "Cargando Modelo")
+        executor.execute(){
             try {
-                val builder = Model.Options.Builder()
-                    .setDevice(Model.Device.GPU)
-                    .setNumThreads(4)
+
+                processor = ImageProcessor.Builder()
+                    .add(ResizeOp(640, 640, ResizeOp.ResizeMethod.NEAREST_NEIGHBOR))
+                    .add(NormalizeOp(0f, 255f)) // 0~255 a 0~1 ==> Hace: (valor - mean) / stddev
                     .build()
 
-                module = Yolov5sFp16NoNms.newInstance(this, builder)
-
-                Log.i("MODEL", "Utilizando GPU")
-
-            }
-            catch (e: Exception){
-                Log.e("MODEL", "Error al utilizar la GPU:", e)
+                Log.i("MODEL", "Cargando Modelo")
                 try {
                     val builder = Model.Options.Builder()
-                        .setDevice(Model.Device.NNAPI)
+                        .setDevice(Model.Device.GPU)
                         .setNumThreads(4)
                         .build()
 
                     module = Yolov5sFp16NoNms.newInstance(this, builder)
 
-                    Log.i("MODEL", "Utilizando NNAPI")
+                    Log.i("MODEL", "Utilizando GPU")
+
                 }
                 catch (e: Exception){
-                    Log.e("MODEL", "Error al utilizar NNAPI:", e)
-                    val builder = Model.Options.Builder()
-                        .setDevice(Model.Device.CPU)
-                        .setNumThreads(4)
-                        .build()
+                    Log.e("MODEL", "Error al utilizar la GPU:", e)
+                    try {
+                        val builder = Model.Options.Builder()
+                            .setDevice(Model.Device.NNAPI)
+                            .setNumThreads(4)
+                            .build()
 
-                    module = Yolov5sFp16NoNms.newInstance(this, builder)
+                        module = Yolov5sFp16NoNms.newInstance(this, builder)
 
-                    Log.i("MODEL", "Utilizando CPU")
+                        Log.i("MODEL", "Utilizando NNAPI")
+                    }
+                    catch (e: Exception){
+                        Log.e("MODEL", "Error al utilizar NNAPI:", e)
+                        val builder = Model.Options.Builder()
+                            .setDevice(Model.Device.CPU)
+                            .setNumThreads(4)
+                            .build()
+
+                        module = Yolov5sFp16NoNms.newInstance(this, builder)
+
+                        Log.i("MODEL", "Utilizando CPU")
+                    }
+
                 }
 
+
+                BufferedReader(InputStreamReader(assets.open("classes.txt"))).use { br ->
+                    classes = br.readLines()
+                }
+
+                // Hilos a utilizar --> Crash, no tocar
+                //PyTorchAndroid.setNumThreads(2)
+            } catch (e: Exception) {
+                Log.e("Object Detection", "Error loading model or classes", e)
             }
 
-
-            BufferedReader(InputStreamReader(assets.open("classes.txt"))).use { br ->
-                classes = br.readLines()
-            }
-
-            // Hilos a utilizar --> Crash, no tocar
-            //PyTorchAndroid.setNumThreads(2)
-        } catch (e: Exception) {
-            Log.e("Object Detection", "Error loading model or classes", e)
         }
     }
 
@@ -161,6 +185,56 @@ class YoloActivityTF : ComponentActivity() {
             Log.e("PytorchHelloWorld", "Error process asset $assetName to file path")
         }
         return file.absolutePath
+    }
+
+    private fun showMainScreen() {
+        setContent {
+            First_testTheme {
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = MaterialTheme.colorScheme.background
+                ) {
+                    ObjectDetectionApp()
+                }
+            }
+        }
+    }
+
+    @Composable
+    fun SplashScreen(onComplete: () -> Unit) {
+        var progress by remember { mutableFloatStateOf(0f) }
+        var isLoading by remember { mutableStateOf(true) }
+
+        LaunchedEffect(Unit) {
+            while (progress < 1f) {
+                delay(50)
+                progress += 0.03f
+            }
+            isLoading = false
+            onComplete()
+        }
+
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = "Cargando...",
+                    fontSize = 24.sp,
+                    color = Color.Green,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(16.dp)
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+                LinearProgressIndicator(
+                    progress = progress,
+                    modifier = Modifier.fillMaxWidth(0.8f)
+                )
+            }
+        }
     }
 
 
