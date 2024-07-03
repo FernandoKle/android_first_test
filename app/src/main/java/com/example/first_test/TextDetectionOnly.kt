@@ -10,6 +10,7 @@ import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.RectF
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.os.Environment
 import android.util.Log
@@ -35,6 +36,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -54,14 +56,21 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
+import coil.ImageLoader
+import coil.compose.AsyncImage
+import coil.decode.GifDecoder
+import coil.decode.ImageDecoderDecoder
 import com.example.first_test.ml.East640Dr
 import com.example.first_test.ml.RosettaDr
 import com.example.first_test.ui.theme.First_testTheme
@@ -274,8 +283,20 @@ class TextDetectionOnly : ComponentActivity() {
 
     @Composable
     fun SplashScreen(onComplete: () -> Unit) {
+
         var progress by remember { mutableFloatStateOf(0f) }
         var isLoading by remember { mutableStateOf(true) }
+
+        val context = LocalContext.current
+        val imageLoader = ImageLoader.Builder(context)
+            .components {
+                if (Build.VERSION.SDK_INT >= 28) {
+                    add(ImageDecoderDecoder.Factory())
+                } else {
+                    add(GifDecoder.Factory())
+                }
+            }
+            .build()
 
         LaunchedEffect(Unit) {
             while (progress < 1f) {
@@ -293,6 +314,16 @@ class TextDetectionOnly : ComponentActivity() {
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
+                AsyncImage(
+                    model = "https://media.tenor.com/nDAaARpgX8gAAAAM/tokyo-mew-mew-mew-mew-power.gif",
+                    imageLoader = imageLoader, // Necesario para GIFs
+                    contentDescription = null,
+                    placeholder = painterResource(id = R.drawable.cat_bye),
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(16.dp))
+                        .size(width = 200.dp, height = 180.dp)
+                )
                 Text(
                     text = "Cargando...",
                     fontSize = 24.sp,

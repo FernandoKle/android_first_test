@@ -12,6 +12,7 @@ import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
+import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import android.view.View
@@ -39,6 +40,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -53,15 +55,22 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
+import coil.ImageLoader
+import coil.compose.AsyncImage
+import coil.decode.GifDecoder
+import coil.decode.ImageDecoderDecoder
 import com.example.first_test.ml.Yolov5nFp16
 import com.example.first_test.ui.theme.First_testTheme
 import kotlinx.coroutines.delay
@@ -267,8 +276,20 @@ class RealTimeDetectionTF : ComponentActivity(), SensorEventListener {
 
     @Composable
     fun SplashScreen(onComplete: () -> Unit) {
+
         var progress by remember { mutableFloatStateOf(0f) }
         var isLoading by remember { mutableStateOf(true) }
+
+        val context = LocalContext.current
+        val imageLoader = ImageLoader.Builder(context)
+            .components {
+                if (Build.VERSION.SDK_INT >= 28) {
+                    add(ImageDecoderDecoder.Factory())
+                } else {
+                    add(GifDecoder.Factory())
+                }
+            }
+            .build()
 
         LaunchedEffect(Unit) {
             while (progress < 1f) {
@@ -286,6 +307,16 @@ class RealTimeDetectionTF : ComponentActivity(), SensorEventListener {
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
+                AsyncImage(
+                    model = "https://media.tenor.com/nDAaARpgX8gAAAAM/tokyo-mew-mew-mew-mew-power.gif",
+                    imageLoader = imageLoader, // Necesario para GIFs
+                    contentDescription = null,
+                    placeholder = painterResource(id = R.drawable.cat_bye),
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(16.dp))
+                        .size(width = 200.dp, height = 180.dp)
+                )
                 Text(
                     text = "Cargando...",
                     fontSize = 24.sp,
@@ -301,6 +332,7 @@ class RealTimeDetectionTF : ComponentActivity(), SensorEventListener {
             }
         }
     }
+
 
     @Composable
     fun MyApp() {

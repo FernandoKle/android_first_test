@@ -2,6 +2,10 @@ plugins {
     alias(libs.plugins.androidApplication)
     alias(libs.plugins.jetbrainsKotlinAndroid)
     //id("org.jetbrains.kotlin.plugin.serialization") //version '1.7.20')
+
+    // To use Kotlin Symbol Processing (KSP)
+    // https://kotlinlang.org/docs/ksp-quickstart.html#add-a-processor
+    id("com.google.devtools.ksp") version "2.0.0-1.0.21"
 }
 
 android {
@@ -116,8 +120,24 @@ dependencies {
     // OpenCV - Otro gordo mas a la lista...
     //implementation("org.opencv:opencv:4.10.0")
 
-    // image from URL ?
+    // image y GIF desde una URL
     implementation("io.coil-kt:coil-compose:2.2.2")
+    implementation("io.coil-kt:coil-gif:2.2.2")
+
+    // ROOM - Base de datos LOCAL basada en SQL
+    // https://developer.android.com/training/data-storage/room#kotlin
+    val room_version = "2.6.1"
+    implementation("androidx.room:room-runtime:$room_version")
+    annotationProcessor("androidx.room:room-compiler:$room_version")
+    // ksp("androidx.room:room-compiler:$room_version")
+    // optional - Kotlin Extensions and Coroutines support for Room
+    implementation("androidx.room:room-ktx:$room_version")
+
+    // Ktor - HTTP Client (tambien hay server en esta libreria)
+    // https://ktor.io/docs/client-create-new-application.html#add-dependencies
+    // val ktor_version = "2.3.12"
+    // implementation("io.ktor:ktor-client-core:$ktor_version")
+    // implementation("io.ktor:ktor-client-cio:$ktor_version")
 
     // Torch
     //implementation("org.pytorch:pytorch_android_lite:1.10.0")
@@ -137,5 +157,6 @@ dependencies {
     // MQTT - https://github.com/eclipse/paho.mqtt.android
     //implementation("org.eclipse.paho:org.eclipse.paho.client.mqttv3:1.1.0")
     //implementation("org.eclipse.paho:org.eclipse.paho.client.mqttv3:1.1.0")
+
     implementation("androidx.fragment:fragment-ktx:1.8.0")
 }

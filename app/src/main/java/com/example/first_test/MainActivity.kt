@@ -9,6 +9,7 @@ package com.example.first_test
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
+import android.os.Build.VERSION.SDK_INT
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -38,6 +39,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -48,7 +50,12 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat.startActivity
-import coil.compose.rememberImagePainter
+import coil.ImageLoader
+import coil.compose.AsyncImage
+import coil.compose.rememberAsyncImagePainter
+import coil.decode.GifDecoder
+import coil.decode.ImageDecoderDecoder
+import coil.request.ImageRequest
 import com.example.first_test.ui.theme.First_testTheme
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
@@ -115,7 +122,9 @@ fun NavigateButton(
 
 @Composable
 fun TextInputScreen() {
-    var textState by remember { mutableStateOf(TextFieldValue("")) }
+    // Con rememberSaveable el valor se mantiene al cambiar las pantallas pero no al cerrar la app
+    var textState by rememberSaveable(stateSaver = TextFieldValue.Saver) { mutableStateOf(TextFieldValue("")) }
+    // var textState by remember { mutableStateOf(TextFieldValue("")) }
     var processedText by remember { mutableStateOf("") }
 
     fun processText(input: String): String {
@@ -193,6 +202,18 @@ fun TextInputScreenPreview() {
 
 @Composable
 fun ExpandTest() {
+
+    val context = LocalContext.current
+    val imageLoader = ImageLoader.Builder(context)
+        .components {
+            if (SDK_INT >= 28) {
+                add(ImageDecoderDecoder.Factory())
+            } else {
+                add(GifDecoder.Factory())
+            }
+        }
+        .build()
+
     Card(
         modifier = Modifier.offset(x=100.dp, y=500.dp),
         //elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
@@ -204,9 +225,25 @@ fun ExpandTest() {
             Modifier
                 .clickable { expanded = !expanded }
         ) {
+            /*
             Image(
                 painter =  painterResource(id = R.drawable.cat_bye),
                 contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .padding(5.dp)
+                    .size(width = 160.dp, height = 200.dp)
+            )
+            */
+            AsyncImage(
+                model = "https://media.tenor.com/pKUHUVvLjsgAAAAM/tokyo-mew-mew-mew-ichigo.gif",
+                //model = ImageRequest.Builder(context)
+                //    .data("https://media.tenor.com/pKUHUVvLjsgAAAAM/tokyo-mew-mew-mew-ichigo.gif")
+                //    .crossfade(true)
+                //    .build(),
+                imageLoader = imageLoader, // Necesario para GIFs
+                contentDescription = null,
+                placeholder = painterResource(id = R.drawable.cat_bye),
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
                     .padding(5.dp)
@@ -233,13 +270,13 @@ fun ExpandedTestPreview() {
 
 @Composable
 fun LoadImageFromUrl(imageUrl: String) {
-    val painter = rememberImagePainter(
-        data = imageUrl,
-        builder = {
-            crossfade(true)
-            error(R.drawable.cat_bye) // Imagen por defecto en caso de error
-        }
-    )
+    val painter = // Imagen por defecto en caso de error
+        rememberAsyncImagePainter(
+            ImageRequest.Builder(LocalContext.current).data(data = imageUrl).apply(block = fun ImageRequest.Builder.() {
+                crossfade(true)
+                error(R.drawable.cat_bye) // Imagen por defecto en caso de error
+            }).build()
+        )
 
     Image(
         painter = painter,
@@ -255,7 +292,7 @@ fun LoadImageFromUrl(imageUrl: String) {
 @Composable
 fun LoadImageFromUrlPreview() {
     First_testTheme {
-        LoadImageFromUrl("http://127.0.0.1:8000/static/logo_CELO.png")
+        LoadImageFromUrl("http://192.168.18.19:8000/static/logo_CELO.png")
     }
 }
 
