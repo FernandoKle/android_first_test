@@ -6,15 +6,17 @@ import androidx.room.Database
 import androidx.room.Delete
 import androidx.room.Entity
 import androidx.room.Insert
+import androidx.room.OnConflictStrategy
 import androidx.room.PrimaryKey
 import androidx.room.Query
 import androidx.room.RoomDatabase
 import androidx.room.Update
+import kotlinx.coroutines.flow.Flow
 
 // ROOM - Base de datos LOCAL basada en SQL
 // https://developer.android.com/training/data-storage/room#kotlin
 
-@Database(entities = [Usuario::class, Medicion::class], version = 1)
+@Database(entities = [Usuario::class, Medicion::class], version = 1, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
 
     abstract fun usuarioDao(): UsuarioDao
@@ -25,62 +27,75 @@ abstract class AppDatabase : RoomDatabase() {
 
 @Entity(tableName = "usuario")
 data class Usuario(
-    @PrimaryKey(autoGenerate = true) val usuario_id: Int,
-    @ColumnInfo(name = "nombre") val nombre: String?,
-    @ColumnInfo(name = "codigo") val codigo: String?,
+    @PrimaryKey(autoGenerate = true) val uid: Int? = null,
+    @ColumnInfo(name = "nombre") val nombre: String,
+    @ColumnInfo(name = "codigo") val codigo: String,
     @ColumnInfo(name = "email")  val email: String?
 )
 
 @Dao // DAO: Data Access Object
 interface UsuarioDao {
     @Query("SELECT * FROM usuario")
-    fun getAll(): List<Usuario>
+    suspend fun getAll(): List<Usuario>
 
-    @Query("SELECT * FROM usuario WHERE usuario_id IN (:usuarioIds)")
-    fun loadAllByIds(usuarioIds: IntArray): List<Usuario>
+    @Query("SELECT * FROM usuario LIMIT 1")
+    suspend fun getOne(): Usuario
+
+    @Query("SELECT * FROM usuario WHERE uid IN (:ids)")
+    suspend fun loadAllByIds(ids: IntArray): List<Usuario>
 
     @Query("SELECT * FROM usuario WHERE nombre LIKE :nombre OR " +
             "codigo LIKE :codigo LIMIT 1")
-    fun findByName(nombre: String, codigo: String): Usuario
+    suspend fun findByName(nombre: String, codigo: String): Usuario
 
-    @Insert
-    fun insertAll(vararg usuarios: Usuario)
+    @Query("SELECT COUNT(*) FROM usuario")
+    suspend fun getCount(): Int
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(vararg usuarios: Usuario)
 
     @Update
-    fun update(usuario: Usuario): Int
+    suspend fun update(usuario: Usuario): Int
 
     @Delete
-    fun delete(usuario: Usuario): Int
+    suspend fun delete(usuario: Usuario): Int
 }
 
 // @=============== Tabla Mediciones ===============@
 
-@Entity(tableName = "mediciones")
+@Entity(tableName = "medicion")
 data class Medicion(
-    @PrimaryKey(autoGenerate = true) val medicion_id: Int,
-    val usuario_id: Int,
+    @PrimaryKey(autoGenerate = true) val mid: Int? = null,
+    val uid: Int,
     val valor: Int,
+    val timestamp: Long = System.currentTimeMillis()
 )
 
 @Dao
 interface MedicionDao{
 
-    @Insert
-    fun insert(vararg mediciones: Medicion)
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(vararg mediciones: Medicion)
 
     @Update
-    fun update(medicion: Medicion): Int
+    suspend fun update(medicion: Medicion): Int
 
     @Delete
-    fun delete(medicion: Medicion): Int
+    suspend fun delete(medicion: Medicion): Int
 
-    @Query("SELECT * FROM mediciones")
-    fun getAll(): List<Medicion>
+    @Query("SELECT * FROM medicion")
+    suspend fun getAll(): List<Medicion>
 
-    @Query("SELECT * FROM mediciones WHERE medicion_id IN (:mediciones_ids)")
-    fun loadAllByIds(mediciones_ids: IntArray): List<Medicion>
+    @Query("SELECT COUNT(*) FROM medicion")
+    suspend fun getCount(): Int
 
-    @Query("SELECT * FROM mediciones WHERE usuario_id LIKE :usuario_id LIMIT 1")
-    fun findByUserId(usuario_id: Int): Medicion
+    @Query("SELECT * FROM medicion")
+    fun getAllFlow(): Flow<List<Medicion>>
+
+    @Query("SELECT * FROM medicion WHERE mid IN (:ids)")
+    suspend fun loadAllByIds(ids: IntArray): List<Medicion>
+
+    @Query("SELECT * FROM medicion WHERE uid LIKE :uid")
+    suspend fun findByUserId(uid: Int): List<Medicion>
 
 }

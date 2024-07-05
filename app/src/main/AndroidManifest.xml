@@ -68,6 +68,12 @@
             android:theme="@style/Theme.First_test">
         </activity>
 
+        <activity
+            android:name=".TestDB"
+            android:exported="true"
+            android:theme="@style/Theme.First_test">
+        </activity>
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="com.example.first_test.provider"

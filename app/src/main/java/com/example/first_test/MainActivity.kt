@@ -180,6 +180,10 @@ fun TextInputScreen() {
                     activity = TextDetectionOnly::class,
                     text = "OCR"
                 )
+                NavigateButton(
+                    activity = TestDB::class,
+                    text = "DB"
+                )
             }
             Spacer(modifier = Modifier.height(16.dp))
             Text(

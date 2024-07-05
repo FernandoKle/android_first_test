@@ -6,6 +6,9 @@ plugins {
     // To use Kotlin Symbol Processing (KSP)
     // https://kotlinlang.org/docs/ksp-quickstart.html#add-a-processor
     id("com.google.devtools.ksp") version "2.0.0-1.0.21"
+    id("org.jetbrains.kotlin.plugin.compose") version "2.0.20-Beta1"
+    val room_version = "2.6.1"
+    id("androidx.room") version room_version apply false
 }
 
 android {
@@ -69,6 +72,9 @@ android {
     composeOptions {
         kotlinCompilerExtensionVersion = "1.5.1"
     }
+    //room {
+        //schemaDirectory("$projectDir/schemas")
+    //}
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
@@ -102,6 +108,8 @@ dependencies {
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
 
+    implementation("androidx.compose.material:material-icons-extended:1.6.8")
+
     // Numero de BIGcores
     //implementation("com.github.sacv081c:cpufeatures:1.0.4")
 
@@ -129,7 +137,7 @@ dependencies {
     val room_version = "2.6.1"
     implementation("androidx.room:room-runtime:$room_version")
     annotationProcessor("androidx.room:room-compiler:$room_version")
-    // ksp("androidx.room:room-compiler:$room_version")
+    ksp("androidx.room:room-compiler:$room_version")
     // optional - Kotlin Extensions and Coroutines support for Room
     implementation("androidx.room:room-ktx:$room_version")
 
