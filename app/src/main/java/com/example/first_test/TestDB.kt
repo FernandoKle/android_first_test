@@ -13,9 +13,10 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -25,6 +26,8 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.Done
+import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.Icon
@@ -58,7 +61,6 @@ import java.util.concurrent.Executors
 class TestDB : ComponentActivity() {
 
     private val dbExecutor: ExecutorService = Executors.newFixedThreadPool(4)
-    //private lateinit var db: RoomDatabase
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -129,27 +131,35 @@ class TestDB : ComponentActivity() {
         val sdf = SimpleDateFormat("HH:mm:ss dd/MM/yyyy", Locale.getDefault())
 
         LaunchedEffect(Unit) {
-            coro.launch {
-                mediciones = medicion.getAll()
-            }
+            mediciones = medicion.getAll()
         }
 
-        Box(
+        Box (
             modifier = Modifier.fillMaxSize()
         ){
-            Box(
+
+            /** Barra superior - navegacion **/
+            Column (
                 modifier = Modifier
-                    .background(Color.Cyan)
+                    .background(Color.DarkGray)
+                    //.fillMaxHeight(0.10f)
                     .align(alignment = Alignment.TopCenter)
                     .fillMaxWidth()
-            ){
-                // Barra superior - navegacion
+            ) {
+
+                Row {
+                    Text(text = "Mediciones", modifier = Modifier.padding(10.dp))
+                }
             }
+
+            /** Lista de elementos **/
             LazyColumn (
                 modifier = Modifier
                     .fillMaxWidth()
+                    .offset(y = 50.dp)
+                    .fillMaxHeight(0.80f)
             ) {
-                // Lista de elementos
+
                 items(mediciones){med ->
 
                     Card(
@@ -157,6 +167,7 @@ class TestDB : ComponentActivity() {
                             .padding(10.dp)
                             .fillMaxWidth()
                     ){
+
                         var expanded by remember { mutableStateOf(false) }
 
                         Column (
@@ -180,7 +191,15 @@ class TestDB : ComponentActivity() {
                                         Spacer(modifier = Modifier.width(10.dp))
                                         Text(text = "Hora: $hora")
                                     }
+
+                                    var editarExpanded by remember { mutableStateOf(false) }
+
+                                    var editarValorMedicionState: TextFieldValue by remember { mutableStateOf(
+                                        TextFieldValue("")
+                                    ) }
+
                                     Row {
+
                                         // Eliminar
                                         Button(onClick = {
                                             coro.launch {
@@ -195,7 +214,65 @@ class TestDB : ComponentActivity() {
                                         ) {
                                             Icon(Icons.Rounded.Delete, "Eliminar", tint = Color.Red)
                                         }
-                                        // Editar !!!
+                                        Spacer(modifier = Modifier.width(10.dp))
+
+                                        // Editar
+                                        Button(onClick = { editarExpanded = !editarExpanded },
+                                            modifier = Modifier.padding(10.dp)
+                                        ) {
+                                            Icon(Icons.Rounded.Edit, "Editar", tint = Color.Green)
+                                        }
+                                    }
+                                    AnimatedVisibility(visible = editarExpanded){
+
+                                        Row {
+                                            TextField(
+                                                value = editarValorMedicionState,
+                                                onValueChange = { new -> editarValorMedicionState = new },
+                                                keyboardOptions = KeyboardOptions(
+                                                    keyboardType =  KeyboardType.Number
+                                                ),
+                                                label = { BasicText(text = "Ingrese Nuevo Valor") },
+                                                modifier = Modifier
+                                                    .width(250.dp)
+                                                    .padding(20.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(10.dp))
+
+                                            Button(
+                                                modifier = Modifier.padding(20.dp),
+                                                onClick = {
+                                                    Log.d("DB", "Editando: ${editarValorMedicionState.annotatedString.toString()}")
+
+                                                    coro.launch {
+
+                                                        try {
+                                                            val valor = editarValorMedicionState.annotatedString.toString().toInt()
+
+                                                            medicion.update(
+                                                                Medicion(
+                                                                    mid = med.mid,
+                                                                    uid = med.uid,
+                                                                    valor = valor
+                                                                )
+                                                            )
+
+                                                        }
+                                                        catch (e: NumberFormatException) {
+                                                            Toast.makeText(
+                                                                context,
+                                                                "No es un numero!",
+                                                                Toast.LENGTH_SHORT
+                                                            ).show()
+                                                        }
+
+                                                        mediciones = medicion.getAll()
+                                                    }
+                                                }
+                                            ) {
+                                                Icon(Icons.Rounded.Done, "Listo")
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -203,15 +280,18 @@ class TestDB : ComponentActivity() {
                         // CARD END
                     }
                 }
+                // FIN Lista de Items
             }
-            Box(
+
+            /** Barra Inferior - agregar elementos **/
+            Column (
                 modifier = Modifier
                     .background(Color.Blue)
                     .align(alignment = Alignment.BottomCenter)
-                    .height(100.dp)
+                    //.height(100.dp)
                     .fillMaxWidth()
+                //.fillMaxHeight(0.15f)
             ){
-                // Barra Inferior - agregar elementos
                 Row {
                     TextField(
                         value = valorMedicionState,
@@ -268,6 +348,7 @@ class TestDB : ComponentActivity() {
                     }
                 }
             }
+
         }
 
     }
