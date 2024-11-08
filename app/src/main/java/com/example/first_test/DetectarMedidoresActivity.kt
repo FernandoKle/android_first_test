@@ -1,7 +1,7 @@
 package com.example.first_test
 /*
+
 import android.content.Context
-import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -9,6 +9,7 @@ import android.graphics.Canvas
 import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.RectF
+import android.media.ExifInterface
 import android.net.Uri
 import android.os.Bundle
 import android.os.Environment
@@ -46,28 +47,26 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
-import com.example.first_test.ml.Yolov5sFp16NoNms
+import com.example.first_test.ml.Cuadro
 import com.example.first_test.ui.theme.First_testTheme
 import org.tensorflow.lite.support.common.ops.NormalizeOp
 import org.tensorflow.lite.support.image.ImageProcessor
 import org.tensorflow.lite.support.image.TensorImage
 import org.tensorflow.lite.support.image.ops.ResizeOp
 import org.tensorflow.lite.support.model.Model
-import java.io.BufferedReader
 import java.io.File
-import java.io.InputStreamReader
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import kotlin.system.measureTimeMillis
 
-class YoloActivityTF : ComponentActivity() {
+class DetectarMedidoresActivity : ComponentActivity() {
 
     private val executor: ExecutorService = Executors.newSingleThreadExecutor()
 
-    private lateinit var module: Yolov5sFp16NoNms
+    private lateinit var module: Cuadro
     private lateinit var processor: ImageProcessor
 
-    private var classes: List<String>? = null
+    private var classes = List<String>(2){"Analogico"; "Digital"}
     private var photoUri: Uri? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -102,7 +101,7 @@ class YoloActivityTF : ComponentActivity() {
                         .setNumThreads(4)
                         .build()
 
-                    module = Yolov5sFp16NoNms.newInstance(this, builder)
+                    module = Cuadro.newInstance(this, builder)
 
                     Log.i("MODEL", "Utilizando GPU")
 
@@ -115,7 +114,7 @@ class YoloActivityTF : ComponentActivity() {
                             .setNumThreads(4)
                             .build()
 
-                        module = Yolov5sFp16NoNms.newInstance(this, builder)
+                        module = Cuadro.newInstance(this, builder)
 
                         Log.i("MODEL", "Utilizando NNAPI")
                     }
@@ -126,16 +125,11 @@ class YoloActivityTF : ComponentActivity() {
                             .setNumThreads(4)
                             .build()
 
-                        module = Yolov5sFp16NoNms.newInstance(this, builder)
+                        module = Cuadro.newInstance(this, builder)
 
                         Log.i("MODEL", "Utilizando CPU")
                     }
 
-                }
-
-
-                BufferedReader(InputStreamReader(assets.open("classes.txt"))).use { br ->
-                    classes = br.readLines()
                 }
 
                 // Hilos a utilizar --> Crash, no tocar
@@ -166,6 +160,19 @@ class YoloActivityTF : ComponentActivity() {
         }
     }
 
+    fun getImageRotation(photoUri: Uri, context: Context): Float {
+        val inputStream = context.contentResolver.openInputStream(photoUri)
+        val exif = inputStream?.let { ExifInterface(it) }
+        val orientation = exif?.getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL)
+
+        return when (orientation) {
+            ExifInterface.ORIENTATION_ROTATE_90 -> 90f
+            ExifInterface.ORIENTATION_ROTATE_180 -> 180f
+            ExifInterface.ORIENTATION_ROTATE_270 -> 270f
+            else -> 0f
+        }
+    }
+
     @Composable
     fun ObjectDetectionApp() {
         First_testTheme {
@@ -180,7 +187,10 @@ class YoloActivityTF : ComponentActivity() {
                 rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
                 uri?.let {
                     contentResolver.openInputStream(it)?.use { inputStream ->
-                        bitmap = BitmapFactory.decodeStream(inputStream)
+                        val auxBitmap = BitmapFactory.decodeStream(inputStream)
+                        val rot = getImageRotation(it, context)
+                        val matrix = Matrix().apply { postRotate(rot) }
+                        bitmap = Bitmap.createBitmap(auxBitmap, 0, 0, auxBitmap.width, auxBitmap.height, matrix, true)
                     }
                 }
             }
@@ -191,12 +201,9 @@ class YoloActivityTF : ComponentActivity() {
                 ) { success ->
                     if (success) {
                         photoUri?.let {
-                            //bitmap = BitmapFactory.decodeStream(context.contentResolver.openInputStream(it))
                             val auxBitmap = BitmapFactory.decodeStream(context.contentResolver.openInputStream(it))
-                            //processImage(bitmap, context) { result ->
-                            //    className = result
-                            //}
-                            val matrix = Matrix().apply { postRotate(90f) }
+                            val rot = getImageRotation(it, context)
+                            val matrix = Matrix().apply { postRotate(rot) }
                             bitmap = Bitmap.createBitmap(auxBitmap, 0, 0, auxBitmap.width, auxBitmap.height, matrix, true)
                             detected = false
                         }
@@ -280,8 +287,9 @@ class YoloActivityTF : ComponentActivity() {
                     modifier = Modifier.fillMaxWidth()
                 ){
                     RainbowButton ({
-                        val intent = Intent(context, RealTimeDetectionTF::class.java)
-                        ContextCompat.startActivity(context, intent, null)
+                        //val intent = Intent(context, RealTimeDetectionTF::class.java)
+                        //ContextCompat.startActivity(context, intent, null)
+                        Toast.makeText(context, "Ya no hay...", Toast.LENGTH_SHORT).show()
                     },
                         text = "LIVE"
                     )
@@ -342,12 +350,13 @@ class YoloActivityTF : ComponentActivity() {
     }
     private fun outputsToNMSPredictions(outputs: FloatArray, imgScaleX: Float, imgScaleY: Float): List<Result> {
         val results = mutableListOf<Result>()
-        val numPredictions = outputs.size / 85
+        val outSize = 7
+        val numPredictions = outputs.size / outSize
 
         for (i in 0 until numPredictions) {
 
-            val prediction : FloatArray = outputs.sliceArray((i*85)until (85+i*85))
-            val clasesScores: FloatArray = prediction.sliceArray(5 until 85)
+            val prediction : FloatArray = outputs.sliceArray((i*outSize)until (outSize+i*outSize))
+            val clasesScores: FloatArray = prediction.sliceArray(5 until outSize)
 
             val score = prediction[4]
 
@@ -358,7 +367,6 @@ class YoloActivityTF : ComponentActivity() {
                 val w = prediction[2] * imgScaleX
                 val h = prediction[3] * imgScaleY
 
-                //val classId = prediction[5].toInt()
                 val classId = argmax(clasesScores)
                 val left = x - w / 2
                 val top = y - h / 2
@@ -366,7 +374,7 @@ class YoloActivityTF : ComponentActivity() {
                 val bottom = y + h / 2
 
                 val rect = RectF(left, top, right, bottom)
-                results.add(Result(classId, classes?.get(classId) ?: "Unknown", score, rect))
+                results.add(Result(classId, classes[classId] ?: "Unknown", score, rect))
             }
         }
 

@@ -17,7 +17,8 @@ android {
 
     defaultConfig {
         applicationId = "com.example.first_test"
-        minSdk = 24
+        //minSdk = 24
+        minSdk = 26
         targetSdk = 34
         versionCode = 1
         versionName = "1.0"
@@ -45,15 +46,15 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = true
-            isShrinkResources = true
+            isMinifyEnabled = false //true
+            isShrinkResources = false //true
             isDebuggable = false
             isJniDebuggable = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
     androidResources {
-        noCompress.addAll(listOf("tflite"))
+        noCompress.addAll(listOf("tflite", "onnxruntime"))
     }
 
     compileOptions {
@@ -125,8 +126,13 @@ dependencies {
     // The FAT one
     //implementation("org.tensorflow:tensorflow-lite-select-tf-ops:2.16.1")
 
+    // ONNX
+    //implementation("com.microsoft.onnxruntime:onnxruntime:1.19.2")
+    //implementation("com.microsoft.onnxruntime:onnxruntime:1.16.3")
+    //implementation("com.microsoft.onnxruntime:onnxruntime-android:1.19.2")
+
     // OpenCV - Otro gordo mas a la lista...
-    //implementation("org.opencv:opencv:4.10.0")
+    implementation("org.opencv:opencv:4.10.0")
 
     // image y GIF desde una URL
     implementation("io.coil-kt:coil-compose:2.2.2")

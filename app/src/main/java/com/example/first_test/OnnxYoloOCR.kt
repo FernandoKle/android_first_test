@@ -1,5 +1,11 @@
 package com.example.first_test
 /*
+
+import ai.onnxruntime.OnnxTensor
+import ai.onnxruntime.OrtEnvironment
+import ai.onnxruntime.OrtLoggingLevel
+import ai.onnxruntime.OrtSession
+import ai.onnxruntime.OrtSession.SessionOptions
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -50,7 +56,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
-import com.example.first_test.ml.East640Dr
+import com.example.first_test.ml.BestFp16
+import com.example.first_test.ml.Cuadro
 import com.example.first_test.ml.RosettaDr
 import com.example.first_test.ui.theme.First_testTheme
 import org.tensorflow.lite.support.common.ops.NormalizeOp
@@ -62,16 +69,16 @@ import org.tensorflow.lite.support.model.Model
 import java.io.BufferedReader
 import java.io.File
 import java.io.InputStreamReader
+import java.nio.LongBuffer
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
-import kotlin.math.cos
-import kotlin.math.sin
 import kotlin.system.measureTimeMillis
 
-class TextDetectionOnly : ComponentActivity() {
+class OnnxYoloOCR : ComponentActivity() {
 
     private data class Result(
         val score: Float,
+        val classIndex: Int,
         val rect: RectF,
         var text: String
     )
@@ -80,16 +87,15 @@ class TextDetectionOnly : ComponentActivity() {
 
     private lateinit var listOfTextDetectionResults: List<Result>
 
-    private lateinit var module: East640Dr
+    private lateinit var module: Cuadro
     private lateinit var processor: ImageProcessor
 
     private lateinit var regModule: RosettaDr
     private lateinit var regProcessor: ImageProcessor
 
+    private var classes = List<String>(2){"Analogico"; "Digital"}
     private val input_w = 640
     private val input_h = 640
-    private val output_w: Int = input_w / 4
-    private val output_h: Int = input_h / 4
 
     private val reg_model_w: Int = 100
     private val reg_model_h: Int = 32
@@ -97,6 +103,9 @@ class TextDetectionOnly : ComponentActivity() {
     private var tokens: List<String>? = null
 
     private var photoUri: Uri? = null
+
+    private var ortEnv: OrtEnvironment? = null
+    private var ortS: OrtSession? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -123,7 +132,8 @@ class TextDetectionOnly : ComponentActivity() {
 
                 processor = ImageProcessor.Builder()
                     .add(ResizeOp(input_h, input_w, ResizeOp.ResizeMethod.BILINEAR))
-                    .add(NormalizeOp(mean, stddev)) // 0~255 a -1~1
+                    //.add(NormalizeOp(mean, stddev)) // 0~255 a -1~1
+                    .add(NormalizeOp(0f, 255f)) // 0~255 a 0~1 ==> Hace: (valor - mean) / stddev
                     .build()
 
                 regProcessor = ImageProcessor.Builder()
@@ -141,8 +151,8 @@ class TextDetectionOnly : ComponentActivity() {
                         .setNumThreads(4)
                         .build()
 
-                    module = East640Dr.newInstance(this, builder)
-                    regModule = RosettaDr.newInstance(this, builder)
+                    module = Cuadro.newInstance(this, builder)
+                    //regModule = RosettaDr.newInstance(this, builder)
 
                     Log.i("MODEL", "Utilizando GPU")
 
@@ -155,8 +165,8 @@ class TextDetectionOnly : ComponentActivity() {
                             .setNumThreads(4)
                             .build()
 
-                        module = East640Dr.newInstance(this, builder)
-                        regModule = RosettaDr.newInstance(this, builder)
+                        module = Cuadro.newInstance(this, builder)
+                        //regModule = RosettaDr.newInstance(this, builder)
 
                         Log.i("MODEL", "Utilizando NNAPI")
                     }
@@ -167,13 +177,26 @@ class TextDetectionOnly : ComponentActivity() {
                             .setNumThreads(4)
                             .build()
 
-                        module = East640Dr.newInstance(this, builder)
-                        regModule = RosettaDr.newInstance(this, builder)
+                        module = Cuadro.newInstance(this, builder)
+                        //regModule = RosettaDr.newInstance(this, builder)
 
                         Log.i("MODEL", "Utilizando CPU")
                     }
 
                 }
+
+                // Onnx
+                ortEnv = OrtEnvironment.getEnvironment(OrtLoggingLevel.ORT_LOGGING_LEVEL_FATAL)
+                val so = SessionOptions()
+
+                so.setIntraOpNumThreads(4)
+                so.addNnapi()
+
+                ortS = ortEnv?.createSession(
+                    //resources.openRawResource(R.raw.reg_model_dr).readBytes(),
+                    resources.openRawResource(R.raw.reg_model).readBytes(),
+                    so
+                )
 
                 // Cargar tokens
                 BufferedReader(InputStreamReader(assets.open("rosetta-tokens.txt"))).use { br ->
@@ -442,355 +465,65 @@ class TextDetectionOnly : ComponentActivity() {
         }
     }
 
-
-    /*
-    private fun detectObjectsAndPaintV2(bitmap: Bitmap) : Bitmap {
-
-        val tensorBitmap = TensorImage.fromBitmap(bitmap)
-
-        val input = processor.process(tensorBitmap)
-
-        val outputsBuffer = module.process(input.tensorBuffer)
-
-        // Salidas del modelo esperadas
-        // EAST scores: (1, h/4, w/4, 1), geometry: (1, h/4, w/4, 5)
-        val scores_array   = outputsBuffer.outputFeature0AsTensorBuffer.floatArray
-        val geometry_array = outputsBuffer.outputFeature1AsTensorBuffer.floatArray
-
-        // Almacenar en forma de matriz
-        val scores   = Array(1) { Array(output_h) { Array(output_w) { FloatArray(1) } } }
-        val geometry = Array(1) { Array(output_h) { Array(output_w) { FloatArray(5) } } }
-
-        // Copiar los datos... Esto no se ve eficiente...
-        for (i in 0 until output_h) {
-            for (j in 0 until output_w) {
-
-                for (k in 0 until 5) {
-                    geometry[0][i][j][k] = geometry_array[ (i * output_w + j) * 5 + k ]
-                }
-                scores[0][i][j] = floatArrayOf(scores_array[ i * output_w + j ])
-            }
-        }
-
-        // Hacer la transpuesta
-        val scoresT =
-            Array(1) { Array(1) { Array(output_h) { FloatArray(output_w) } } }
-        val geometryT =
-            Array(1) { Array(5) { Array(output_h) { FloatArray(output_w) } } }
-
-        for (i in 0 until scoresT[0][0].size) {
-            for (j in 0 until geometryT[0][0][0].size) {
-                for (k in 0 until 1) {
-                    scoresT[0][k][i][j] = scores[0][i][j][k]
-                }
-                for (k in 0 until 5) {
-                    geometryT[0][k][i][j] = geometry[0][i][j][k]
-                }
-            }
-        }
-
-        // Decodificar las Bounding Boxes
-        val detectedRotatedRects = ArrayList<RotatedRect>()
-        val detectedConfidences = ArrayList<Float>()
-
-        for (y in 0 until scoresT[0][0].size) {
-            val detectionScoreData = scoresT[0][0][y]
-            val X0Data = geometryT[0][0][y]
-            val X1Data = geometryT[0][1][y]
-            val X2Data = geometryT[0][2][y]
-            val X3Data = geometryT[0][3][y]
-            val detectionRotationAngleData = geometryT[0][4][y]
-
-            for (x in 0 until scoresT[0][0][0].size) {
-                if (detectionScoreData[x] < 0.5) {
-                    continue
-                }
-
-                // Compute the rotated bounding boxes and confiences (heavily based on OpenCV example):
-                // https://github.com/opencv/opencv/blob/master/samples/dnn/text_detection.py
-                val offsetX = x * 4.0
-                val offsetY = y * 4.0
-
-                val h = X0Data[x] + X2Data[x]
-                val w = X1Data[x] + X3Data[x]
-
-                val angle = detectionRotationAngleData[x]
-                val cos = cos(angle.toDouble())
-                val sin = sin(angle.toDouble())
-
-                val offset =
-                    Point(
-                        offsetX + cos * X1Data[x] + sin * X2Data[x],
-                        offsetY - sin * X1Data[x] + cos * X2Data[x]
-                    )
-                val p1 = Point(-sin * h + offset.x, -cos * h + offset.y)
-                val p3 = Point(-cos * w + offset.x, sin * w + offset.y)
-                val center = Point(0.5 * (p1.x + p3.x), 0.5 * (p1.y + p3.y))
-
-                val textDetection =
-                    RotatedRect(
-                        center,
-                        Size(w.toDouble(), h.toDouble()),
-                        (-1 * angle * 180.0 / Math.PI)
-                    )
-                detectedRotatedRects.add(textDetection)
-                detectedConfidences.add(detectionScoreData[x])
-            }
-        }
-
-        // NMS
-        val detectedConfidencesMat = MatOfFloat(vector_float_to_Mat(detectedConfidences))
-        val boundingBoxesMat = MatOfRotatedRect(vector_RotatedRect_to_Mat(detectedRotatedRects))
-        val indicesMat = MatOfInt()
-
-        NMSBoxesRotated(
-            boundingBoxesMat,
-            detectedConfidencesMat,
-            0.5f,
-            0.4f,
-            indicesMat
-        )
-
-        // Dibujar
-        val bitmapWithBoundingBoxes = bitmap.copy(Bitmap.Config.ARGB_8888, true)
-        val canvas = Canvas(bitmapWithBoundingBoxes)
-        val paint = Paint().apply {
-            color = android.graphics.Color.RED
-            strokeWidth = 10.0f
-            style = Paint.Style.STROKE
-        }
-
-        val recognitionImageHeight = reg_model_h
-        val recognitionImageWidth = reg_model_w
-        val ratioWidth = bitmap.width.toFloat() / input_w.toFloat()
-        val ratioHeight = bitmap.height.toFloat() / input_h.toFloat()
-
-        for (i in indicesMat.toArray()) {
-
-            val boundingBox = boundingBoxesMat.toArray()[i]
-
-            val targetVertices = ArrayList<Point>()
-
-            targetVertices.add(
-                Point(0.toDouble(),
-                    (recognitionImageHeight - 1).toDouble()
-                )
-            )
-            targetVertices.add(
-                Point(
-                    0.toDouble(),
-                    0.toDouble()
-                )
-            )
-            targetVertices.add(
-                Point(
-                    (recognitionImageWidth - 1).toDouble(),
-                    0.toDouble()
-                )
-            )
-            targetVertices.add(
-                Point(
-                    (recognitionImageWidth - 1).toDouble(),
-                    (recognitionImageHeight - 1).toDouble()
-                )
-            )
-
-            val srcVertices = ArrayList<Point>()
-
-            val boundingBoxPointsMat = Mat()
-
-            boxPoints(boundingBox, boundingBoxPointsMat)
-
-            for (j in 0 until 4) {
-                srcVertices.add(
-                    Point(
-                        boundingBoxPointsMat.get(j, 0)[0] * ratioWidth,
-                        boundingBoxPointsMat.get(j, 1)[0] * ratioHeight
-                    )
-                )
-                if (j != 0) {
-                    canvas.drawLine(
-                        (boundingBoxPointsMat.get(j, 0)[0] * ratioWidth).toFloat(),
-                        (boundingBoxPointsMat.get(j, 1)[0] * ratioHeight).toFloat(),
-                        (boundingBoxPointsMat.get(j - 1, 0)[0] * ratioWidth).toFloat(),
-                        (boundingBoxPointsMat.get(j - 1, 1)[0] * ratioHeight).toFloat(),
-                        paint
-                    )
-                }
-            }
-            canvas.drawLine(
-                (boundingBoxPointsMat.get(0, 0)[0] * ratioWidth).toFloat(),
-                (boundingBoxPointsMat.get(0, 1)[0] * ratioHeight).toFloat(),
-                (boundingBoxPointsMat.get(3, 0)[0] * ratioWidth).toFloat(),
-                (boundingBoxPointsMat.get(3, 1)[0] * ratioHeight).toFloat(),
-                paint
-            )
-
-            // Recortar los rectangulos e inferir con el modelo de OCR
-
-            val srcVerticesMat =
-                MatOfPoint2f(srcVertices[0], srcVertices[1], srcVertices[2], srcVertices[3])
-
-            val targetVerticesMat =
-                MatOfPoint2f(targetVertices[0], targetVertices[1], targetVertices[2], targetVertices[3])
-
-            val rotationMatrix = getPerspectiveTransform(srcVerticesMat, targetVerticesMat)
-
-            val recognitionBitmapMat = Mat()
-            val srcBitmapMat = Mat()
-
-            bitmapToMat(bitmap, srcBitmapMat)
-
-            warpPerspective(
-                srcBitmapMat,
-                recognitionBitmapMat,
-                rotationMatrix,
-                Size(recognitionImageWidth.toDouble(), recognitionImageHeight.toDouble())
-            )
-
-            val recognitionBitmap =
-                Bitmap.createBitmap(
-                    recognitionImageWidth,
-                    recognitionImageHeight,
-                    Bitmap.Config.ARGB_8888
-                )
-
-            matToBitmap(recognitionBitmapMat, recognitionBitmap)
-
-            // Inferir con modelo de OCR
-
-            //val recognitionTensorImage =
-                //ImageUtils.bitmapToTensorImageForRecognition(
-                    //recognitionBitmap,
-                    //recognitionImageWidth,
-                    //recognitionImageHeight,
-                    //recognitionImageMean,
-                    //recognitionImageStd
-                //)
-
-            //recognitionResult.rewind()
-            //recognitionInterpreter.run(recognitionTensorImage.buffer, recognitionResult)
-
-            //var recognizedText = ""
-            //for (k in 0 until recognitionModelOutputSize) {
-                //var alphabetIndex = recognitionResult.getInt(k * 8)
-                //if (alphabetIndex in 0..alphabets.length - 1)
-                    //recognizedText = recognizedText + alphabets[alphabetIndex]
-            //}
-            //Log.d("Recognition result:", recognizedText)
-            //if (recognizedText != "") {
-                //ocrResults.put(recognizedText, getRandomColor())
-            //}
-        }
-
-        return bitmapWithBoundingBoxes
-    }
-    */
-
     private fun detectObjectsAndPaint(bitmap: Bitmap) : Bitmap {
 
+
         val tensorBitmap = TensorImage.fromBitmap(bitmap)
 
         val input = processor.process(tensorBitmap)
 
         val outputsBuffer = module.process(input.tensorBuffer)
 
-        // Salidas del modelo esperadas
-        // EAST scores: (1, h/4, w/4, 1), geometry: (1, h/4, w/4, 5)
-        val scores_array   = outputsBuffer.outputFeature0AsTensorBuffer.floatArray
-        val geometry_array = outputsBuffer.outputFeature1AsTensorBuffer.floatArray
+        val outputs = outputsBuffer.outputFeature0AsTensorBuffer.floatArray
 
-        // Almacenar en forma de matriz
-        val scores = Array(output_h) { FloatArray(output_w) }
-        val geometry = Array(output_h) { Array(output_w) { FloatArray(5) } }
+        val imgScaleX = bitmap.width * 1.0f
+        val imgScaleY = bitmap.height * 1.0f
 
-        // Copiar los datos... Esto no se ve eficiente...
-        for (i in 0 until output_h) {
-            for (j in 0 until output_w) {
-
-                for (k in 0 until 5) {
-                    geometry[i][j][k] = geometry_array[ (i * output_w + j) * 5 + k ]
-                }
-                scores[i][j] = scores_array[ i * output_w + j ]
-            }
-        }
-
-        val results = processEastOutputs(
-            scores,
-            geometry,
-            bitmap.width.toFloat() / input_w.toFloat(),
-            bitmap.height.toFloat() / input_h.toFloat()
-        )
+        val results = outputsToNMSPredictions(outputs, imgScaleX, imgScaleY)
 
         listOfTextDetectionResults = results
 
         return paintDetectionResults(results, bitmap)
     }
 
-    // Procesar las salidas del modelo EAST para obtener los Rect
-    private fun processEastOutputs(
-        scores: Array<FloatArray>,
-        geometry: Array<Array<FloatArray>>,
-        rW: Float,
-        rH: Float
-    ): List<Result> {
+    private fun outputsToNMSPredictions(outputs: FloatArray, imgScaleX: Float, imgScaleY: Float): List<Result> {
+        val results = mutableListOf<Result>()
+        val outSize = 7
+        val numPredictions = outputs.size / outSize
 
-        val boxes = mutableListOf<Result>()
+        for (i in 0 until numPredictions) {
 
-        // Geometry:
-        // d1: Distancia desde el píxel actual hasta el borde superior del texto.
-        // d2: Distancia desde el píxel actual hasta el borde derecho del texto.
-        // d3: Distancia desde el píxel actual hasta el borde inferior del texto.
-        // d4: Distancia desde el píxel actual hasta el borde izquierdo del texto.
-        // Theta: El ángulo de rotación del texto.
+            val prediction : FloatArray = outputs.sliceArray((i*outSize)until (outSize+i*outSize))
+            val clasesScores: FloatArray = prediction.sliceArray(5 until outSize)
 
-        // Procesar la salida del modelo EAST
-        for (y in 0 until output_h) {
-            for (x in 0 until output_w) {
+            val score = prediction[4]
 
-                val score = scores[y][x]
+            if (score > 0.3) { //0.5
 
-                if (score >= 0.5f) {
+                val x = prediction[0] * imgScaleX
+                val y = prediction[1] * imgScaleY
+                val w = prediction[2] * imgScaleX
+                val h = prediction[3] * imgScaleY
 
-                    val offsetX = x * 4.0f
-                    val offsetY = y * 4.0f
+                val classId = argmax(clasesScores)
+                val left = x - w / 2
+                val top = y - h / 2
+                val right = x + w / 2
+                val bottom = y + h / 2
 
-                    val angle = geometry[y][x][4]
-                    val cosA = cos(angle)
-                    val sinA = sin(angle)
-
-                    val h = geometry[y][x][0] + geometry[y][x][2]
-                    val w = geometry[y][x][1] + geometry[y][x][3]
-
-                    val endX = offsetX + cosA * geometry[y][x][1] + sinA * geometry[y][x][2]
-                    val endY = offsetY - sinA * geometry[y][x][1] + cosA * geometry[y][x][2]
-
-                    val startX = endX - w
-                    val startY = endY - h
-
-                    boxes.add(Result(
+                val rect = RectF(left, top, right, bottom)
+                results.add(
+                    Result(
+                        classIndex = classId,
                         score = score,
-                        rect = RectF(
-                            startX * rW,
-                            startY * rH,
-                            (endX) * rW,
-                            (endY) * rH,
-                            ),
+                        rect = rect,
                         text = ""
-                        )
                     )
-                }
+                )
             }
         }
 
-        Log.d("MODELO", "${boxes.size} potenciales predicciones")
-
-        val filteredBoxes = filterNMS(boxes)
-
-        Log.d("MODELO", "${filteredBoxes.size} predicciones restantes")
-        Log.d("MODELO", "Escalando boxes por rW: $rW, rH: $rH")
-
-        return filteredBoxes
+        return filterNMS(results) //* scale
     }
 
     private fun filterNMS(results: List<Result>): List<Result> {
@@ -893,7 +626,7 @@ class TextDetectionOnly : ComponentActivity() {
 
     fun cropBitmap(bitmap: Bitmap, rect: RectF): Bitmap {
 
-        val offset = 20 //bitmap.width / 1000f
+        val offset = 20 //20 //bitmap.width / 1000f
 
         val left = (rect.left - offset).toInt().coerceAtLeast(0)
         val top = (rect.top - offset).toInt().coerceAtLeast(0)
@@ -903,25 +636,103 @@ class TextDetectionOnly : ComponentActivity() {
         return Bitmap.createBitmap(bitmap, left, top, width, height)
     }
 
+    //private fun preprocessImage(bitmap: Bitmap) : FloatBuffer {
+//
+        //val w = reg_model_w
+        //val h = reg_model_h
+        //val imgData = FloatBuffer.allocate(1 * w * h * 1)
+        //imgData.rewind()
+//
+        //val bmpData = IntArray(reg_model_w * reg_model_h)
+        //bitmap.getPixels(bmpData, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
+//
+        //var idx = 0
+        //for (i in 0..reg_model_w - 1) {
+            //for (j in 0..reg_model_h - 1) {
+                //val pixelValue = bmpData[idx++]
+                //imgData.put(((pixelValue shr 16 and 0xFF) - IMAGE_MEAN) / IMAGE_STD)
+                //imgData.put(((pixelValue shr 8 and 0xFF) - IMAGE_MEAN) / IMAGE_STD)
+                //imgData.put(((pixelValue and 0xFF) - IMAGE_MEAN) / IMAGE_STD)
+            //}
+        //}
+//
+        //return imgData ;
+    //}
+
     private fun doOCR(bitmap: Bitmap) : String {
 
         // Inferir
         val tensorBitmap = TensorImage.fromBitmap(bitmap)
-
         val input = regProcessor.process(tensorBitmap)
 
-        val outputsBuffer = regModule.process(input.tensorBuffer)
+        //while (ortS?.inputNames?.iterator()?.hasNext() == true){
+        //    Log.d("INFERENCIA", "Input: ${ortS?.inputNames?.iterator()?.next()}")
+        //}
 
-        val outputs = outputsBuffer.outputFeature0AsTensorBuffer.floatArray
+        val inputNameImg = "input" //ortS?.inputNames?.iterator()?.next()
+        val inputNameText = "text" //"onnx::Gather_1" //ortS?.inputNames?.iterator()?.next()
+        val shapeImg = longArrayOf(1, 1, reg_model_h.toLong(), reg_model_w.toLong())
+        val shapeText = longArrayOf(1, 26)
+
+        Log.d("INFERENCIA", "Input 1: ${inputNameImg}")
+        Log.d("INFERENCIA", "Input 2: ${inputNameText}")
+
+        ortEnv.use {
+
+            val inputTensorImg = OnnxTensor.createTensor(ortEnv,
+                input.buffer.asFloatBuffer(), shapeImg)
+
+            val inputTensorText = OnnxTensor.createTensor(ortEnv,
+                LongBuffer.allocate(26), shapeText)
+
+            inputTensorImg.use {
+
+                var output: OrtSession.Result? = null
+                try {
+                    output = ortS?.run(
+                        mapOf(
+                            inputNameImg to inputTensorImg,
+                            inputNameText to inputTensorText
+                        )
+                    )
+                }
+                catch (e: Exception) {
+                    Log.e("INFERENCIA", "Error:", e)
+                }
+
+                output?.use {
+                    @Suppress("UNCHECKED_CAST")
+                    val pred = ((output.get(0)?.value) as Array<Array<FloatArray>>)[0]
+                    return output2stringV2(pred)
+                }
+            }
+        }
 
         // Procesar resultados
-        return output2string(outputs)
+        //return output2string(out_str)
+        return ""
+    }
+
+    private fun output2stringV2(outputs: Array<FloatArray>): String {
+
+        var finalText: String = ""
+
+        for (i in 0 until outputs.size) {
+
+            val tokenId = argmax(outputs[i])
+
+            finalText += tokens?.get(tokenId) ?: ""
+        }
+
+        Log.d("OCR", "Detecto: \"${finalText}\"")
+
+        return finalText
     }
 
     private fun output2string(outputs: FloatArray): String {
 
         var finalText: String = ""
-        val numTokens = tokens?.size ?: 37
+        val numTokens = tokens?.size ?: 38 //37
         val numChars = outputs.size / numTokens
 
         for (i in 0 until numChars) {
@@ -940,4 +751,4 @@ class TextDetectionOnly : ComponentActivity() {
     }
 
 }
-*/
+ */

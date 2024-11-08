@@ -2,19 +2,19 @@
 <project version="4">
   <component name="deploymentTargetDropDown">
     <value>
-      <entry key="RealTimeDetectionTF">
+      <entry key="DetectarMedidoresActivity">
         <State />
       </entry>
-      <entry key="RealTimeDetectionTFint8">
+      <entry key="MainActivity">
         <State />
       </entry>
-      <entry key="RealTimeOCR">
+      <entry key="OnnxYoloOCR">
         <State />
       </entry>
       <entry key="TestDB">
         <State />
       </entry>
-      <entry key="TextDetectionOnly">
+      <entry key="YoloOCR">
         <State />
       </entry>
       <entry key="app">
