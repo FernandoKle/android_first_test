@@ -51,6 +51,7 @@ import coil.decode.GifDecoder
 import coil.decode.ImageDecoderDecoder
 import kotlinx.coroutines.delay
 import org.opencv.android.Utils
+import org.opencv.core.CvType
 import org.opencv.core.Mat
 import org.opencv.core.Point
 import org.opencv.core.Size
@@ -61,6 +62,7 @@ import kotlin.math.abs
 import kotlin.math.atan2
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.pow
 
 // Mew Mew Ichigo =D
 //const val splashScreenGIF = "https://media.tenor.com/nDAaARpgX8gAAAAM/tokyo-mew-mew-mew-mew-power.gif"
@@ -127,16 +129,16 @@ fun argmax(array: FloatArray): Int {
 }
 
 data class Result(
-    val score: Float,
-    val classIndex: Int,
-    val rect: RectF,
-    var text: String,
-    var esDecimal: Boolean,
+    val score: Float = 0f,
+    val classIndex: Int = 0,
+    val rect: RectF = RectF(0.0f, 0.0f, 0.0f, 0.0f),
+    var text: String = "",
+    var esDecimal: Boolean = false,
     var x: Float = 0f,
     var y: Float = 0f
 )
 
-fun getCorrectionAngle(results: List<Result>): Int{
+fun getCorrectionAngle(results: List<Result>): Int {
 
     val detections = results.sortedBy{ it.rect.left }
     val p1 = detections.first().rect
@@ -148,6 +150,62 @@ fun getCorrectionAngle(results: List<Result>): Int{
     val x1 = p1.right.toDouble()
 
     return Math.toDegrees(atan2(y2 - y1, x2 - x1)).toInt()
+}
+
+fun outputsToUnfilteredResults(outputs: FloatArray, imgScaleX: Float, imgScaleY: Float): List<Result> {
+    val results = mutableListOf<Result>()
+    val outSize = 16
+    val numPredictions = outputs.size / outSize
+
+    for (i in 0 until numPredictions) {
+
+        val prediction : FloatArray = outputs.sliceArray((i*outSize)until (outSize+i*outSize))
+
+        val score = prediction[4]
+
+        if (score > 0.2f) {
+
+            val x = prediction[0] * imgScaleX
+            val y = prediction[1] * imgScaleY
+
+            results.add(
+                Result(
+                    score = score,
+                    x = x,
+                    y = y
+                )
+            )
+        }
+    }
+
+    return results
+}
+
+enum class TypoMedidor {
+    No, Analogico, Digital
+}
+
+fun getCorrectionAngleByRegresion(puntos: List<Result>): DoubleArray {
+
+    if (puntos.isEmpty()) {
+        return doubleArrayOf(0.0, 0.0, 0.0)
+    }
+
+    val sumScore = puntos.sumOf { it.score.toDouble() }
+    val xMean = puntos.sumOf { it.x * it.score.toDouble() } / sumScore
+    val yMean = puntos.sumOf { it.y * it.score.toDouble() } / sumScore
+
+    val numerator = puntos.sumOf { it.score * (it.x - xMean) * (it.y - yMean) }
+    val denominator = puntos.sumOf { it.score * (it.x - xMean).pow(2) }
+
+    //if (denominator == 0.0) {
+    //    return 0.0
+    //}
+
+    //val pendiente = numerator / denominator
+    val angle = Math.toDegrees(atan2(numerator, denominator))
+
+    return doubleArrayOf(angle, xMean, yMean)
 }
 
 fun aplicarReduccionDeRuido(bitmap: Bitmap): Bitmap {
@@ -176,6 +234,30 @@ fun aplicarReduccionDeRuido(bitmap: Bitmap): Bitmap {
     //filMat.release()
 
     return bitmap
+}
+
+fun aplicarSharpen(bitmap: Bitmap): Bitmap {
+
+    val mat = Mat()
+    Utils.bitmapToMat(bitmap, mat)
+
+    val kernel = Mat(3, 3, CvType.CV_32F)
+    kernel.put(0, 0,
+        0.0, -1.0, 0.0,
+        -1.0, 5.0, -1.0,
+        0.0, -1.0, 0.0)
+
+    Imgproc.filter2D(mat, mat, -1, kernel)
+
+    val outBitmap = Bitmap.createBitmap(mat.cols(), mat.rows(), Bitmap.Config.ARGB_8888)
+    Utils.matToBitmap(mat, outBitmap)
+
+    //Utils.matToBitmap(mat, bitmap)
+    mat.release()
+    kernel.release()
+
+    //return bitmap
+    return outBitmap
 }
 
 fun Bitmap.toMat(): Mat { //source: Bitmap,
@@ -309,7 +391,7 @@ fun estaAdentro(ra: Result, rb: Result): Boolean {
 
 }
 
-fun doOCR(results: List<Result>) : String {
+fun doOCR(results: List<Result>, comaIndex: Int = 0) : String {
 
     if (results.isEmpty()){
         return ""
@@ -319,18 +401,8 @@ fun doOCR(results: List<Result>) : String {
     val sortedResults: MutableList<Result> = results.sortedBy{ it.rect.left }.toMutableList()
 
     var encontroComa = false
-    /* Viejo metodo para encontrar comas
-    for (r in sortedResults){
-        if (r.classIndex == 0){
-            encontroComa = true
-        }
-        if (encontroComa){
-            r.esDecimal = true
-        }
-    }
-    */
-    // Nuevo metodo para encontrar comas
-    val resultComa = sortedResults.find { it.classIndex == 0 }
+
+    val resultComa = sortedResults.find { it.classIndex == comaIndex }
     resultComa ?.let {
         for (r in sortedResults){
             if (estaAdentro(r, it)){
@@ -339,7 +411,7 @@ fun doOCR(results: List<Result>) : String {
         }
     }
 
-    sortedResults.removeAll { it.classIndex == 0 }
+    sortedResults.removeAll { it.classIndex == comaIndex }
 
     val cantidad = sortedResults.size
     val media = mediaDistancias(sortedResults)
@@ -370,7 +442,7 @@ fun doOCR(results: List<Result>) : String {
     return text
 }
 
-fun doOCRDigital(results: List<Result>) : String {
+fun doOCRDigital(results: List<Result>, comaIndex: Int = 0) : String {
 
     if (results.isEmpty()){
         return ""
@@ -381,7 +453,7 @@ fun doOCRDigital(results: List<Result>) : String {
 
     var encontroComa = false
     for (r in sortedResults){
-        if (r.classIndex == 0){
+        if (r.classIndex == comaIndex){
             encontroComa = true
         }
         if (encontroComa){
@@ -389,7 +461,7 @@ fun doOCRDigital(results: List<Result>) : String {
         }
     }
 
-    sortedResults.removeAll { it.classIndex == 0 }
+    sortedResults.removeAll { it.classIndex == comaIndex }
 
     val cantidad = sortedResults.size
     val media = mediaDistancias(sortedResults)
@@ -400,7 +472,7 @@ fun doOCRDigital(results: List<Result>) : String {
 
         val dist = distanciaCajas(sortedResults[i], sortedResults[i+1])
 
-        if ( ( abs(dist - media) > media ) ){ //(dist < media / 2) or
+        if ( ( abs(dist - media) > media*1.2 ) ){ //(dist < media / 2) or
             text += sortedResults[i].text
             text += "X"
         }

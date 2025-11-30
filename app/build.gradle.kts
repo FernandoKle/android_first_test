@@ -131,6 +131,13 @@ dependencies {
     //implementation("com.microsoft.onnxruntime:onnxruntime:1.16.3")
     //implementation("com.microsoft.onnxruntime:onnxruntime-android:1.19.2")
 
+    // QR
+    implementation("com.google.mlkit:barcode-scanning:17.2.0")
+    //implementation("androidx.camera:camera-lifecycle:1.4.0-alpha01")
+    implementation("androidx.camera:camera-lifecycle")
+    //implementation("androidx.camera:camera-view:1.4.0-alpha01")
+    implementation("androidx.camera:camera-view")
+
     // OpenCV - Otro gordo mas a la lista...
     implementation("org.opencv:opencv:4.10.0")
 

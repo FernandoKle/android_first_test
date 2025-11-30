@@ -21,6 +21,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.camera.core.ExperimentalGetImage
 import androidx.compose.animation.animateColor
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.infiniteRepeatable
@@ -64,6 +65,7 @@ import androidx.compose.material3.TextField
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -88,9 +90,11 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.core.graphics.toRect
-import com.example.first_test.ml.NumAn
-import com.example.first_test.ml.NumDig
+import com.example.first_test.ml.NumCom
 import com.example.first_test.ui.theme.First_testTheme
+import com.google.mlkit.vision.barcode.BarcodeScannerOptions
+import com.google.mlkit.vision.barcode.BarcodeScanning
+import com.google.mlkit.vision.barcode.common.Barcode
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -118,14 +122,15 @@ class MainActivity : ComponentActivity() {
     var progress = 0f
     var photoUri: Uri? = null
 
-    private lateinit var module: NumAn
-    private lateinit var moduleDig: NumDig
+    private lateinit var module: NumCom
+    //private lateinit var module: NumAn
+    //private lateinit var moduleDig: NumDig
     private lateinit var processor: ImageProcessor
-    private lateinit var rotProcessor: ImageProcessor
+    //private lateinit var rotProcessor: ImageProcessor
 
-    private var classes = listOf(",", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9")
-    private val input_w = 640
-    private val input_h = 640
+    private var classes = listOf(",", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", ",")
+    private val input_w = 320 //640
+    private val input_h = 320 //640
 
     private var analogScore = 0f
     private var digitalScore = 0f
@@ -164,10 +169,10 @@ class MainActivity : ComponentActivity() {
                     .add(NormalizeOp(0f, 255f)) // 0~255 a 0~1 ==> Hace: (valor - mean) / stddev
                     .build()
 
-                rotProcessor = ImageProcessor.Builder()
-                    .add(ResizeOp(128, 128, ResizeOp.ResizeMethod.BILINEAR))
-                    //.add(NormalizeOp(0f, 255f)) // 0~255 a 0~1 ==> Hace: (valor - mean) / stddev
-                    .build()
+                //rotProcessor = ImageProcessor.Builder()
+                //    .add(ResizeOp(128, 128, ResizeOp.ResizeMethod.BILINEAR))
+                //    //.add(NormalizeOp(0f, 255f)) // 0~255 a 0~1 ==> Hace: (valor - mean) / stddev
+                //    .build()
 
                 Log.i("MODEL", "Cargando Modelo")
                 try {
@@ -176,8 +181,9 @@ class MainActivity : ComponentActivity() {
                         .setNumThreads(4)
                         .build()
 
-                    module = NumAn.newInstance(this, builder)
-                    moduleDig = NumDig.newInstance(this, builder)
+                    module = NumCom.newInstance(this, builder)
+                    //module = NumAn.newInstance(this, builder)
+                    //moduleDig = NumDig.newInstance(this, builder)
 
                     Log.i("MODEL", "Utilizando GPU")
 
@@ -190,8 +196,9 @@ class MainActivity : ComponentActivity() {
                             .setNumThreads(4)
                             .build()
 
-                        module = NumAn.newInstance(this, builder)
-                        moduleDig = NumDig.newInstance(this, builder)
+                        module = NumCom.newInstance(this, builder)
+                        //module = NumAn.newInstance(this, builder)
+                        //moduleDig = NumDig.newInstance(this, builder)
 
                         Log.i("MODEL", "Utilizando NNAPI")
                     }
@@ -202,8 +209,9 @@ class MainActivity : ComponentActivity() {
                             .setNumThreads(4)
                             .build()
 
-                        module = NumAn.newInstance(this, builder)
-                        moduleDig = NumDig.newInstance(this, builder)
+                        module = NumCom.newInstance(this, builder)
+                        //module = NumAn.newInstance(this, builder)
+                        //moduleDig = NumDig.newInstance(this, builder)
 
                         Log.i("MODEL", "Utilizando CPU")
                     }
@@ -225,7 +233,7 @@ class MainActivity : ComponentActivity() {
 
         executor.shutdown()
         module.close()
-        moduleDig.close()
+        //moduleDig.close()
     }
 
     private fun showMainScreen() {
@@ -382,7 +390,298 @@ class MainActivity : ComponentActivity() {
     }
 
     @Composable
+    @androidx.annotation.OptIn(ExperimentalGetImage::class)
     fun SocioInput() {
+
+        val context = LocalContext.current
+
+        finalCodigoSocio = obtenerString(context, "socio") ?: finalCodigoSocio
+        finalCodigoMedidor = obtenerString(context, "codigo") ?: finalCodigoMedidor
+
+        var codigoSocio by rememberSaveable(stateSaver = TextFieldValue.Saver) {
+            mutableStateOf(
+                TextFieldValue(finalCodigoSocio)
+            )
+        }
+        var codigoMedidor by rememberSaveable(stateSaver = TextFieldValue.Saver) {
+            mutableStateOf(
+                TextFieldValue(finalCodigoMedidor)
+            )
+        }
+
+        // State to hold the scanned QR code value
+        var scannedCode by remember { mutableStateOf<String?>(null) }
+
+        // Callback to update the TextField with the scanned code
+        LaunchedEffect(scannedCode) {
+            scannedCode?.let {
+                codigoSocio = TextFieldValue(it)
+                finalCodigoSocio = it
+            }
+        }
+
+        // Permission request launcher
+        val cameraPermissionLauncher = rememberLauncherForActivityResult(
+            contract = ActivityResultContracts.RequestPermission(),
+            onResult = { isGranted ->
+                if (isGranted) {
+                    // Permission granted, launch the scanner
+                    //startQRCodeScanner { result ->
+                    //    scannedCode = result
+                    //}
+                } else {
+                    // Permission denied, show a message or handle accordingly
+                    // You might want to explain to the user why the permission is needed
+                }
+            }
+        )
+
+        fun startQRCodeScanner(onResult: (String) -> Unit) {
+            val options = BarcodeScannerOptions.Builder()
+                .setBarcodeFormats(
+                    Barcode.FORMAT_QR_CODE
+                )
+                .build()
+
+            val scanner = BarcodeScanning.getClient(options)
+
+            val executor = ContextCompat.getMainExecutor(context)
+
+            val imageAnalysis = androidx.camera.core.ImageAnalysis.Builder()
+                .build()
+                .apply {
+                    setAnalyzer(executor) { imageProxy ->
+                        val mediaImage = imageProxy.image
+                        if (mediaImage != null) {
+                            val image = com.google.mlkit.vision.common.InputImage.fromMediaImage(
+                                mediaImage,
+                                imageProxy.imageInfo.rotationDegrees
+                            )
+
+                            scanner.process(image)
+                                .addOnSuccessListener { barcodes ->
+                                    for (barcode in barcodes) {
+                                        barcode.rawValue?.let { rawValue ->
+                                            onResult(rawValue)
+                                            scanner.close()
+                                            this.clearAnalyzer()
+                                            imageProxy.close()
+                                            return@addOnSuccessListener // Found one, can stop
+                                        }
+                                    }
+                                    imageProxy.close()
+                                }
+                                .addOnFailureListener { e ->
+                                    // Task failed with an exception
+                                    e.printStackTrace()
+                                    imageProxy.close()
+                                }
+                        } else {
+                            imageProxy.close()
+                        }
+                    }
+                }
+
+            // This part requires CameraX setup. For simplicity in this example,
+            // we'll simulate a scan. In a real app, you'd integrate with CameraX
+            // to get the ImageAnalysis stream.
+
+            // **Important:** For a fully functional QR scanner, you'll need to:
+            // 1. Add CameraX dependencies to your build.gradle.
+            // 2. Implement a CameraX preview to show the camera feed.
+            // 3. Bind the ImageAnalysis use case to the camera lifecycle.
+
+            // **Simplified Simulation (Replace with actual CameraX implementation):**
+            // For this example, let's just call the onResult callback directly after a short delay
+            // to simulate a successful scan.
+            android.os.Handler().postDelayed({
+                onResult("SIMULATED_QR_CODE_VALUE") // Replace with actual scanned value
+            }, 1000)
+        }
+
+        Box(
+            modifier = Modifier.fillMaxSize()
+        ) {
+            /*
+            Image(
+                painter = painterResource(id = R.drawable.background),
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
+            */
+
+            Box {
+                //navBar(Modifier)
+                DynamicColorTopAppBar()
+            }
+
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .offset(y = (100).dp)
+                //.height(140.dp)
+                //.background(color = Color.Blue)
+            ) {
+                ProgressBar()
+            }
+
+            Column(
+                modifier = Modifier
+                    .padding(16.dp)
+                    .fillMaxSize(),
+                verticalArrangement = Arrangement.Center
+            ) {
+
+                Row() {
+                    TextField(
+                        value = codigoSocio,
+                        onValueChange = { newValue ->
+                            codigoSocio = newValue
+                            finalCodigoSocio = codigoSocio.annotatedString.toString()
+                        },
+                        label = { Text("Código de Socio") },
+                        modifier = Modifier
+                            //.fillMaxWidth(0.75f)
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(50.dp))
+                    )
+                    /*
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Button(
+                        colors = ButtonDefaults.buttonColors(containerColor = Color.Green),
+                        shape = CircleShape,
+                        modifier = Modifier
+                            .align(Alignment.CenterVertically)
+                            .size(70.dp)
+                            .offset(y = (-7).dp),
+                        onClick = {
+                            // Check for camera permission before launching the scanner
+                            if (ContextCompat.checkSelfPermission(
+                                    context,
+                                    android.Manifest.permission.CAMERA
+                                ) == PackageManager.PERMISSION_GRANTED
+                            ) {
+                                startQRCodeScanner { result ->
+                                    scannedCode = result
+                                }
+                            } else {
+                                // Request camera permission
+                                cameraPermissionLauncher.launch(android.Manifest.permission.CAMERA)
+                            }
+                            progress += 0.05f
+                            guardarString(context, "socio", finalCodigoSocio)
+                            guardarString(context, "codigo", finalCodigoMedidor)
+                        }
+                    ) {
+                        Icon(Icons.Rounded.QrCode, "Escanear QR", modifier = Modifier.fillMaxSize())
+                    }
+                    */
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+                TextField(
+                    value = codigoMedidor,
+                    onValueChange = { newValue ->
+                        codigoMedidor = newValue
+                        finalCodigoMedidor = codigoMedidor.annotatedString.toString()
+                    },
+                    label = { Text("Código de Medidor") },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(50.dp))
+                )
+            }
+
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .offset(x = (-40).dp, y = (-16).dp)
+            ) {
+                Button(
+                    onClick = {
+
+                        progress = 0.20f
+
+                        finalCodigoMedidor = codigoMedidor.annotatedString.toString()
+                        finalCodigoSocio = codigoSocio.annotatedString.toString()
+
+                        guardarString(context, "socio", finalCodigoSocio)
+                        guardarString(context, "codigo", finalCodigoMedidor)
+
+                        setContent {
+                            First_testTheme {
+                                Surface(
+                                    modifier = Modifier.fillMaxSize(),
+                                    color = MaterialTheme.colorScheme.background
+                                ) {
+                                    MedidorInput()
+                                }
+                            }
+                        }
+                    }
+                ) {
+                    Row {
+                        Text("Continuar")
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Icon(Icons.AutoMirrored.Rounded.ArrowForward, "you are deprecated")
+                    }
+                }
+            }
+        }
+    }
+
+    /*
+    @Composable
+    fun QRCodeScannerPreview(onQRCodeDetected: (String) -> Unit) {
+        val lifecycleOwner = LocalLifecycleOwner.current
+        val context = LocalContext.current
+        val cameraProviderFuture = remember { ProcessCameraProvider.getInstance(context) }
+
+        AndroidView(
+            factory = { ctx ->
+                val previewView = PreviewView(ctx)
+                cameraProviderFuture.addListener({
+                    val cameraProvider = cameraProviderFuture.get()
+                    val preview = Preview.Builder().build().apply {
+                        setSurfaceProvider(previewView.surfaceProvider)
+                    }
+
+                    val imageAnalysis = ImageAnalysis.Builder()
+                        .build()
+                        .apply {
+                            setAnalyzer(ContextCompat.getMainExecutor(ctx)) { imageProxy ->
+                                // Your barcode scanning logic here (similar to startQRCodeScanner)
+                                // Call onQRCodeDetected with the result
+                                imageProxy.close()
+                            }
+                        }
+
+                    val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
+
+                    try {
+                        cameraProvider.unbindAll()
+                        cameraProvider.bindToLifecycle(
+                            lifecycleOwner,
+                            cameraSelector,
+                            preview,
+                            imageAnalysis
+                        )
+                    } catch (exc: Exception) {
+                        // Handle exceptions
+                    }
+                }, ContextCompat.getMainExecutor(ctx))
+                previewView
+            },
+            update = { view ->
+                // No need to update in this simple case
+            }
+        )
+    }
+    */
+
+    @Composable
+    fun OLDSocioInput() {
 
         val context = LocalContext.current
 
@@ -665,13 +964,25 @@ class MainActivity : ComponentActivity() {
 
                                 executor.execute() {
                                     val time = measureTimeMillis {
-
-                                        paintedBitmap = detectObjectsAndPaint(
+                                        /*
+                                        paintedBitmap = detectObjectsAndPaintV2(
                                             it,
                                             tryNoiseReduction = true,
-                                            tryToCorrect = true,
+                                            tryToCorrect = 2,
+                                            trySharpen = true,
+                                            tryRotate = true,
                                             onBitmapChange = {
                                                 newBitmap -> bitmap = newBitmap
+                                            }
+                                        )
+                                        */
+                                        paintedBitmap = detectObjectsAndPaintV3(
+                                            it,
+                                            tryNoiseReduction = true,
+                                            attempts = 5,
+                                            trySharpen = true,
+                                            onBitmapChange = {
+                                                    newBitmap -> bitmap = newBitmap
                                             }
                                         )
                                         isRunning = false
@@ -679,11 +990,16 @@ class MainActivity : ComponentActivity() {
                                     detected = true
                                     Log.d("INFERENCIA", "Tomo: $time [ms]")
 
+                                    val resultComa = listOfTextDetectionResults.find { it.classIndex == 0 }
+                                    resultComa ?.let {
+                                        isLastAnalog = true
+                                    }
+
                                     if (isLastAnalog){
-                                        finalMedicion = doOCR(listOfTextDetectionResults)
+                                        finalMedicion = doOCR(listOfTextDetectionResults, comaIndex = 0)
                                     }
                                     else {
-                                        finalMedicion = doOCRDigital(listOfTextDetectionResults)
+                                        finalMedicion = doOCRDigital(listOfTextDetectionResults, comaIndex = 11)
                                     }
                                     guardarString(context, "medicion", finalMedicion)
 
@@ -1138,13 +1454,168 @@ class MainActivity : ComponentActivity() {
         launcher.launch(chooserIntent)
     }
 
+    private fun detectObjectsAndPaintV3(
+        inputBitmap: Bitmap,
+        onBitmapChange: (Bitmap) -> Unit = {},
+        attempts: Int = 5,
+        tryNoiseReduction: Boolean = false,
+        trySharpen: Boolean = false,
+        useRegresion: Boolean = true
+    ) : Bitmap {
+
+        lateinit var bitmap: Bitmap
+
+        /** Correccion para 16:9 usando un recorte **/
+        if (attempts > 1) {
+            val squareSize = minOf(inputBitmap.width, inputBitmap.height)
+            val xOffset = (inputBitmap.width - squareSize) / 2
+            val yOffset = (inputBitmap.height - squareSize) / 2
+
+            bitmap = Bitmap.createBitmap(inputBitmap, xOffset, yOffset, squareSize, squareSize)
+            onBitmapChange(bitmap)
+        } else {
+            bitmap = inputBitmap
+        }
+
+        bitmap = if (trySharpen) aplicarSharpen(bitmap) else bitmap
+
+        /** PREPROCESADO DEL MODELO **/
+        val tensorBitmap = TensorImage.fromBitmap(bitmap)
+        val input = processor.process(tensorBitmap)
+
+        /** INFERENCIA **/
+        val outputs = module.process(input.tensorBuffer).outputFeature0AsTensorBuffer.floatArray
+
+        if (outputs == null) {
+            Log.d("MODELO", "Error en la inferencia")
+            return bitmap
+        }
+
+        val N = getDetectionScore(outputs)
+
+        bigScore = N[0]
+        if (bigScore.isNaN()) {
+            bigScore = 0.0f
+        }
+
+        /** PROCESAR RESULTADOS **/
+        val imgScaleX = bitmap.width * 1.0f
+        val imgScaleY = bitmap.height * 1.0f
+
+        val results = outputsToNMSPredictions(outputs, imgScaleX, imgScaleY)
+
+        listOfTextDetectionResults = results
+        Log.d("MODELO", "${results.size} detecciones, Score: ${bigScore}")
+
+
+        /** APLICAR CORRECCIONES **/
+        if (tryNoiseReduction and (results.size <= 1)) {
+
+            Log.d("MODELO", "Intentando reduccion de ruido")
+
+            val newBitmap = aplicarReduccionDeRuido(bitmap)
+            onBitmapChange(newBitmap)
+
+            return detectObjectsAndPaintV3(newBitmap,
+                attempts = attempts - 1,
+                tryNoiseReduction = false
+            )
+        }
+
+        /** APLICAR RECORTE Y ROTACION **/
+        if ((attempts > 1) and (results.size > 1)){
+
+            val detections = results.sortedBy{ it.rect.left }
+            val p1 = detections.first()
+            val p2 = detections.last()
+
+            var angle: Double = 0.0
+
+            /** CALCULAR ROTACION **/
+            if (useRegresion){
+                val unfilteredResults = outputsToUnfilteredResults(outputs, imgScaleX, imgScaleY)
+                val data = getCorrectionAngleByRegresion(unfilteredResults)
+
+                angle = data[0]
+            }
+            else {
+                val y2 = p2.y.toDouble()
+                val y1 = p1.y.toDouble()
+                val x2 = p2.x.toDouble()
+                val x1 = p1.x.toDouble()
+
+                angle = Math.toDegrees(atan2(y2 - y1, x2 - x1))
+            }
+
+            Log.d("MODELO", "Rotacion: ${angle}")
+
+            if (bigScore < 0.60f){
+
+                Log.d("MODELO", "Intentando ZOOM")
+
+                val r1 = p1.rect.toRect()
+                val r2 = p2.rect.toRect()
+
+                val left = r1.left
+                val top = minOf(r1.top, r2.top)
+                val width = r2.right - r1.left
+                val bottom = maxOf(r1.bottom, r2.bottom)
+                val height = bottom - top
+                val sSize = maxOf( maxOf(width, height), bitmap.width / 4)
+
+                lateinit var newBitmap: Bitmap
+
+                /** RECORTE **/
+                if (((top + sSize) <= bitmap.height) and ((left + sSize) <= bitmap.width)){
+                    newBitmap = Bitmap.createBitmap(bitmap,
+                        maxOf(0, left - sSize/2),
+                        maxOf(0, top - sSize/2),
+                        minOf(sSize + sSize/2, bitmap.width),
+                        minOf(sSize + sSize/2, bitmap.height)
+                    )
+                }
+                else {
+                    newBitmap = Bitmap.createBitmap(bitmap,
+                        maxOf(0, left - sSize/2),
+                        maxOf(0, top - sSize/2),
+                        maxOf(0, minOf(sSize + sSize/2, bitmap.width) - maxOf(0, left - sSize/2)),
+                        maxOf(0, minOf(sSize + sSize/2, bitmap.height) - maxOf(0, top - sSize/2))
+                    )
+                }
+
+                /** ROTACION **/
+                if (abs(angle) > 3) {
+                    Log.d("MODELO", "Intentando corregir rotacion (${angle}°)")
+
+                    newBitmap = newBitmap.rotateBitmapPure(angle.toFloat())
+
+                    //val cx = ( (p2.x + p1.x) / 2 ).toDouble()
+                    //val cy = ( (p2.y + p1.y) / 2 ).toDouble()
+                    //newBipmap = newBipmap.rotateBitmapAroundAxis(angle, cx, cy)
+                }
+                onBitmapChange(newBitmap)
+
+                return detectObjectsAndPaintV3(newBitmap , attempts = attempts - 1 )
+            }
+        }
+
+        // Final try
+        if ((results.size <= 1) and (attempts > 1)){
+            return detectObjectsAndPaintV3(bitmap , attempts = attempts - 1)
+        }
+        return paintDetectionResultsAndText(bitmap)
+    }
+
+    /*
     private fun detectObjectsAndPaint(
         inputBitmap: Bitmap,
         onBitmapChange: (Bitmap) -> Unit = {},
         tryToCorrect: Boolean = true,
         tryNoiseReduction: Boolean = false,
+        trySharpen: Boolean = false,
         isAnalog: Boolean = false,
         isDigital: Boolean = false,
+        useRegresion: Boolean = true
     ) : Bitmap {
 
         lateinit var bitmap: Bitmap
@@ -1162,29 +1633,44 @@ class MainActivity : ComponentActivity() {
             bitmap = inputBitmap
         }
 
-        /** PREPROCESADO DEL MODELO **/
-        val tensorBitmap = TensorImage.fromBitmap(bitmap)
+        val bitmapDig = if (trySharpen) aplicarSharpen(bitmap) else bitmap
 
-        val input = processor.process(tensorBitmap)
         var outputs: FloatArray? = null
 
-        /** INFERENCIA **/
+        /** PREPROCESADO Y INFERENCIA **/
         if (!isAnalog and !isDigital) {
+            /** PREPROCESADO DEL MODELO **/
+            val tensorBitmap = TensorImage.fromBitmap(bitmap)
+            val input = processor.process(tensorBitmap)
+
+            val tensorBitmapDig = TensorImage.fromBitmap(bitmapDig)
+            val inputDig = processor.process(tensorBitmapDig)
+
+            /** INFERENCIA **/
             val outputsAn = module.process(input.tensorBuffer).outputFeature0AsTensorBuffer.floatArray
-            val outputsDig = moduleDig.process(input.tensorBuffer).outputFeature0AsTensorBuffer.floatArray
+            val outputsDig = moduleDig.process(inputDig.tensorBuffer).outputFeature0AsTensorBuffer.floatArray
 
             val aN = getDetectionScore(outputsAn)
             val dN = getDetectionScore(outputsDig)
 
-            val aScore = aN[0]
-            val dScore = dN[0]
+            var aScore = aN[0]
+            var dScore = dN[0]
             val aCumulativeScore = aN[1]
             val dCumulativeScore = dN[1]
 
+            /** ELECCION **/
             analogScore = aScore
             digitalScore = dScore
 
-            if (aCumulativeScore > dCumulativeScore){
+            if (aScore.isNaN()){
+                aScore = 0f
+            }
+            if (dScore.isNaN()){
+                dScore = 0f
+            }
+
+            //if (aCumulativeScore > dCumulativeScore){
+            if (aScore > dScore){
                 isLastAnalog = true
                 Log.d("MODELO", "Detecto ANALOGICO (score: ${aScore})")
                 outputs = outputsAn
@@ -1193,13 +1679,19 @@ class MainActivity : ComponentActivity() {
                 isLastAnalog = false
                 Log.d("MODELO", "Detecto DIGITAL (score: ${dScore})")
                 outputs = outputsDig
+                bitmap = bitmapDig
             }
         }
         else if (isAnalog) {
+            val tensorBitmap = TensorImage.fromBitmap(bitmap)
+            val input = processor.process(tensorBitmap)
             outputs = module.process(input.tensorBuffer).outputFeature0AsTensorBuffer.floatArray
         }
         else if (isDigital) {
-            outputs = moduleDig.process(input.tensorBuffer).outputFeature0AsTensorBuffer.floatArray
+            val tensorBitmapDig = TensorImage.fromBitmap(bitmapDig)
+            val inputDig = processor.process(tensorBitmapDig)
+            outputs = moduleDig.process(inputDig.tensorBuffer).outputFeature0AsTensorBuffer.floatArray
+            bitmap = bitmapDig
         }
 
         /** PROCESAR RESULTADOS **/
@@ -1211,7 +1703,7 @@ class MainActivity : ComponentActivity() {
             return bitmap
         }
 
-        val results = outputsToNMSPredictions(outputs, imgScaleX, imgScaleY)
+        var results = outputsToNMSPredictions(outputs, imgScaleX, imgScaleY)
 
         listOfTextDetectionResults = results
         Log.d("MODELO", "${results.size} detecciones, Score: ${bigScore}")
@@ -1232,19 +1724,31 @@ class MainActivity : ComponentActivity() {
         }
 
         /** APLICAR RECORTE Y ROTACION **/
-        if (tryToCorrect and  (results.size > 1)){
+        if (tryToCorrect and (results.size > 1)){
+
+            val detections = results.sortedBy{ it.rect.left }
+            val p1 = detections.first()
+            val p2 = detections.last()
+
+            var angle: Double = 0.0
 
             /** CALCULAR ROTACION **/
-            val detections = results.sortedBy{ it.rect.left }
-            val p1 = detections.first()//.rect
-            val p2 = detections.last()//.rect
+            if (useRegresion){
+                val unfilteredResults = outputsToUnfilteredResults(outputs, imgScaleX, imgScaleY)
+                val data = getCorrectionAngleByRegresion(unfilteredResults)
 
-            val y2 = p2.y.toDouble()
-            val y1 = p1.y.toDouble()
-            val x2 = p2.x.toDouble()
-            val x1 = p1.x.toDouble()
+                angle = data[0]
+                //val cx = data[1]
+                //val cy = data[2]
+            }
+            else {
+                val y2 = p2.y.toDouble()
+                val y1 = p1.y.toDouble()
+                val x2 = p2.x.toDouble()
+                val x1 = p1.x.toDouble()
 
-            val angle = Math.toDegrees(atan2(y2 - y1, x2 - x1))
+                angle = Math.toDegrees(atan2(y2 - y1, x2 - x1))
+            }
 
             Log.d("MODELO", "Rotacion: ${angle}")
 
@@ -1277,8 +1781,8 @@ class MainActivity : ComponentActivity() {
                     newBitmap = Bitmap.createBitmap(bitmap,
                         maxOf(0, left - sSize/2),
                         maxOf(0, top - sSize/2),
-                        minOf(sSize + sSize/2, bitmap.width) - maxOf(0, left - sSize/2),
-                        minOf(sSize + sSize/2, bitmap.height) - maxOf(0, top - sSize/2)
+                        maxOf(0, minOf(sSize + sSize/2, bitmap.width) - maxOf(0, left - sSize/2)),
+                        maxOf(0, minOf(sSize + sSize/2, bitmap.height) - maxOf(0, top - sSize/2))
                     )
                 }
 
@@ -1294,21 +1798,218 @@ class MainActivity : ComponentActivity() {
                 }
                 onBitmapChange(newBitmap)
 
+                return detectObjectsAndPaint(newBitmap , tryToCorrect = false )
+                /*
                 if (isLastAnalog) {
                     return detectObjectsAndPaint(newBitmap , tryToCorrect = false, isAnalog = true )
                 }
                 else {
                     return detectObjectsAndPaint(newBitmap , tryToCorrect = false, isDigital = true )
                 }
+                */
+            }
+        }
+
+        // Final try
+        if (!isLastAnalog and (results.size <= 1) and tryToCorrect){
+            return detectObjectsAndPaint(bitmap , tryToCorrect = true, isAnalog = true )
+        }
+        return paintDetectionResultsAndText(bitmap)
+    }
+
+    private fun detectObjectsAndPaintV2(
+        inputBitmap: Bitmap,
+        onBitmapChange: (Bitmap) -> Unit = {},
+        tryToCorrect: Int = 0,
+        tryNoiseReduction: Boolean = false,
+        trySharpen: Boolean = false,
+        tryRotate: Boolean = false,
+        tryZoom: Boolean = false,
+        tipoInicial: TypoMedidor = TypoMedidor.No
+    ) : Bitmap {
+
+        lateinit var bitmap: Bitmap
+        var tipo = tipoInicial
+
+        /** Correccion para 16:9 usando un recorte **/
+        if (tryToCorrect > 1) {
+            val squareSize = minOf(inputBitmap.width, inputBitmap.height)
+            val xOffset = (inputBitmap.width - squareSize) / 2
+            val yOffset = (inputBitmap.height - squareSize) / 2
+
+            bitmap = Bitmap.createBitmap(inputBitmap, xOffset, yOffset, squareSize, squareSize)
+            onBitmapChange(bitmap)
+        }
+        else {
+            bitmap = inputBitmap
+        }
+
+        val bitmapDig = if (trySharpen) aplicarSharpen(bitmap) else bitmap
+
+        var outputs: FloatArray? = null
+
+        /** PREPROCESADO Y INFERENCIA **/
+        if (tipo == TypoMedidor.No) {
+            /** PREPROCESADO DEL MODELO **/
+            val tensorBitmap = TensorImage.fromBitmap(bitmap)
+            val input = processor.process(tensorBitmap)
+
+            val tensorBitmapDig = TensorImage.fromBitmap(bitmapDig)
+            val inputDig = processor.process(tensorBitmapDig)
+
+            /** INFERENCIA **/
+            val outputsAn = module.process(input.tensorBuffer).outputFeature0AsTensorBuffer.floatArray
+            val outputsDig = moduleDig.process(inputDig.tensorBuffer).outputFeature0AsTensorBuffer.floatArray
+
+            val aN = getDetectionScore(outputsAn)
+            val dN = getDetectionScore(outputsDig)
+
+            val aScore = aN[0]
+            val dScore = dN[0]
+            val aCumulativeScore = aN[1]
+            val dCumulativeScore = dN[1]
+
+            /** ELECCION **/
+            analogScore = aScore
+            digitalScore = dScore
+
+            //if (aCumulativeScore > dCumulativeScore){
+            if (aScore > dScore) {
+                    tipo = TypoMedidor.Analogico
+                    isLastAnalog = true
+                    Log.d("MODELO", "Detecto ANALOGICO (score: ${aScore})")
+                    outputs = outputsAn
+                }
+                else {
+                    tipo = TypoMedidor.Digital
+                    isLastAnalog = false
+                    Log.d("MODELO", "Detecto DIGITAL (score: ${dScore})")
+                    outputs = outputsDig
+                    bitmap = bitmapDig
+                }
+            }
+        else if (tipo == TypoMedidor.Analogico) {
+            val tensorBitmap = TensorImage.fromBitmap(bitmap)
+            val input = processor.process(tensorBitmap)
+            outputs = module.process(input.tensorBuffer).outputFeature0AsTensorBuffer.floatArray
+        }
+        else if (tipo == TypoMedidor.Digital) {
+            val tensorBitmapDig = TensorImage.fromBitmap(bitmapDig)
+            val inputDig = processor.process(tensorBitmapDig)
+            outputs = moduleDig.process(inputDig.tensorBuffer).outputFeature0AsTensorBuffer.floatArray
+            bitmap = bitmapDig
+            onBitmapChange(bitmapDig)
+        }
+
+        /** PROCESAR RESULTADOS **/
+        val imgScaleX = bitmap.width * 1.0f
+        val imgScaleY = bitmap.height * 1.0f
+
+        if (outputs == null){
+            Log.d("MODELO", "Error en la inferencia")
+            return bitmap
+        }
+
+        val results = outputsToNMSPredictions(outputs, imgScaleX, imgScaleY)
+
+        listOfTextDetectionResults = results
+        Log.d("MODELO", "${results.size} detecciones, Score: ${bigScore}")
+
+
+        /** APLICAR CORRECCIONES **/
+        if (tryNoiseReduction and (results.size <= 1)) {
+            Log.d("MODELO", "Intentando reduccion de ruido")
+
+            val newBitmap = aplicarReduccionDeRuido(bitmap)
+            onBitmapChange(newBitmap)
+
+            return detectObjectsAndPaintV2(
+                newBitmap,
+                tryToCorrect = tryToCorrect - 1,
+                tryRotate = tryRotate,
+                tryZoom = tryZoom
+            )
+        }
+
+        /** APLICAR RECORTE Y ROTACION **/
+        if ((results.size > 1) and (bigScore < 0.78f) and (tryToCorrect > 0)){
+
+            //lateinit var newBitmap: Bitmap
+            var newBitmap: Bitmap? = null
+
+            if (tryRotate) {
+
+                val unfilteredResults = outputsToUnfilteredResults(outputs, imgScaleX, imgScaleY)
+                val data = getCorrectionAngleByRegresion(unfilteredResults)
+
+                val angle = data[0]
+                val cx = data[1]
+                val cy = data[2]
+
+                Log.d("MODELO", "Rotacion: $angle")
+
+                if (abs(angle) > 3) {
+                    newBitmap = bitmap.rotateBitmapAroundAxis(angle, cx, cy)
+
+                    onBitmapChange(newBitmap)
+                }
+
+                return detectObjectsAndPaintV2(
+                    newBitmap ?: bitmap,
+                    tryZoom = true,
+                    tryToCorrect = tryToCorrect - 1,
+                    tryRotate = tryToCorrect - 1 > 0
+                )
+            }
+            else if (tryZoom){
+                Log.d("MODELO", "Intentando ZOOM")
+
+                val detections = results.sortedBy{ it.rect.left }
+                val p1 = detections.first()
+                val p2 = detections.last()
+                val r1 = p1.rect.toRect()
+                val r2 = p2.rect.toRect()
+
+                val left = r1.left
+                val top = minOf(r1.top, r2.top)
+                val width = r2.right - r1.left
+                val bottom = maxOf(r1.bottom, r2.bottom)
+                val height = bottom - top
+                val sSize = maxOf( maxOf(width, height), bitmap.width / 4)
+
+                if (((top + sSize) <= bitmap.height) and ((left + sSize) <= bitmap.width)){
+                    newBitmap = Bitmap.createBitmap(bitmap,
+                        maxOf(0, left - sSize/2),
+                        maxOf(0, top - sSize/2),
+                        minOf(sSize + sSize/2, bitmap.width),
+                        minOf(sSize + sSize/2, bitmap.height)
+                    )
+                }
+                else {
+                    newBitmap = Bitmap.createBitmap(bitmap,
+                        maxOf(0, left - sSize/2),
+                        maxOf(0, top - sSize/2),
+                        minOf(sSize + sSize/2, bitmap.width) - maxOf(0, left - sSize/2),
+                        minOf(sSize + sSize/2, bitmap.height) - maxOf(0, top - sSize/2)
+                    )
+                }
+                onBitmapChange(newBitmap)
+
+                return detectObjectsAndPaintV2(
+                    newBitmap ?: bitmap,
+                    tryToCorrect = tryToCorrect - 1,
+                    tryRotate = tryToCorrect - 1 > 0
+                )
             }
         }
 
         return paintDetectionResultsAndText(bitmap)
     }
+*/
 
     private fun outputsToNMSPredictions(outputs: FloatArray, imgScaleX: Float, imgScaleY: Float): List<Result> {
         val results = mutableListOf<Result>()
-        val outSize = 16
+        val outSize = 5 + classes.size // 4 coords, 1 score, + 11 clasess
         val numPredictions = outputs.size / outSize
         var cumulativeScore = 0f
         var count = 0
@@ -1320,7 +2021,7 @@ class MainActivity : ComponentActivity() {
 
             val score = prediction[4]
 
-            if (score > 0.5f) {
+            if (score > 0.3f) {
 
                 cumulativeScore += score
                 count += 1
