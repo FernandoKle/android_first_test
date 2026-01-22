@@ -90,7 +90,8 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.core.graphics.toRect
-import com.example.first_test.ml.NumCom
+import com.example.first_test.ml.NumAn
+import com.example.first_test.ml.NumDig
 import com.example.first_test.ui.theme.First_testTheme
 import com.google.mlkit.vision.barcode.BarcodeScannerOptions
 import com.google.mlkit.vision.barcode.BarcodeScanning
@@ -122,15 +123,16 @@ class MainActivity : ComponentActivity() {
     var progress = 0f
     var photoUri: Uri? = null
 
-    private lateinit var module: NumCom
-    //private lateinit var module: NumAn
-    //private lateinit var moduleDig: NumDig
+    //private lateinit var module: NumCom
+    private lateinit var module: NumAn
+    private lateinit var moduleDig: NumDig
     private lateinit var processor: ImageProcessor
     //private lateinit var rotProcessor: ImageProcessor
 
-    private var classes = listOf(",", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", ",")
-    private val input_w = 320 //640
-    private val input_h = 320 //640
+    //private var classes = listOf(",", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", ",")
+    private var classes = listOf(",", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9")
+    private val input_w = 640
+    private val input_h = 640
 
     private var analogScore = 0f
     private var digitalScore = 0f
@@ -181,9 +183,9 @@ class MainActivity : ComponentActivity() {
                         .setNumThreads(4)
                         .build()
 
-                    module = NumCom.newInstance(this, builder)
-                    //module = NumAn.newInstance(this, builder)
-                    //moduleDig = NumDig.newInstance(this, builder)
+                    //module = NumCom.newInstance(this, builder)
+                    module = NumAn.newInstance(this, builder)
+                    moduleDig = NumDig.newInstance(this, builder)
 
                     Log.i("MODEL", "Utilizando GPU")
 
@@ -196,9 +198,9 @@ class MainActivity : ComponentActivity() {
                             .setNumThreads(4)
                             .build()
 
-                        module = NumCom.newInstance(this, builder)
-                        //module = NumAn.newInstance(this, builder)
-                        //moduleDig = NumDig.newInstance(this, builder)
+                        //module = NumCom.newInstance(this, builder)
+                        module = NumAn.newInstance(this, builder)
+                        moduleDig = NumDig.newInstance(this, builder)
 
                         Log.i("MODEL", "Utilizando NNAPI")
                     }
@@ -209,9 +211,9 @@ class MainActivity : ComponentActivity() {
                             .setNumThreads(4)
                             .build()
 
-                        module = NumCom.newInstance(this, builder)
-                        //module = NumAn.newInstance(this, builder)
-                        //moduleDig = NumDig.newInstance(this, builder)
+                        //module = NumCom.newInstance(this, builder)
+                        module = NumAn.newInstance(this, builder)
+                        moduleDig = NumDig.newInstance(this, builder)
 
                         Log.i("MODEL", "Utilizando CPU")
                     }
@@ -233,7 +235,7 @@ class MainActivity : ComponentActivity() {
 
         executor.shutdown()
         module.close()
-        //moduleDig.close()
+        moduleDig.close()
     }
 
     private fun showMainScreen() {
@@ -964,7 +966,6 @@ class MainActivity : ComponentActivity() {
 
                                 executor.execute() {
                                     val time = measureTimeMillis {
-                                        /*
                                         paintedBitmap = detectObjectsAndPaintV2(
                                             it,
                                             tryNoiseReduction = true,
@@ -975,7 +976,7 @@ class MainActivity : ComponentActivity() {
                                                 newBitmap -> bitmap = newBitmap
                                             }
                                         )
-                                        */
+                                        /*
                                         paintedBitmap = detectObjectsAndPaintV3(
                                             it,
                                             tryNoiseReduction = true,
@@ -985,15 +986,16 @@ class MainActivity : ComponentActivity() {
                                                     newBitmap -> bitmap = newBitmap
                                             }
                                         )
+                                        */
                                         isRunning = false
                                     }
                                     detected = true
                                     Log.d("INFERENCIA", "Tomo: $time [ms]")
 
-                                    val resultComa = listOfTextDetectionResults.find { it.classIndex == 0 }
-                                    resultComa ?.let {
-                                        isLastAnalog = true
-                                    }
+                                    //val resultComa = listOfTextDetectionResults.find { it.classIndex == 0 }
+                                    //resultComa ?.let {
+                                    //    isLastAnalog = true
+                                    //}
 
                                     if (isLastAnalog){
                                         finalMedicion = doOCR(listOfTextDetectionResults, comaIndex = 0)
@@ -1606,7 +1608,6 @@ class MainActivity : ComponentActivity() {
         return paintDetectionResultsAndText(bitmap)
     }
 
-    /*
     private fun detectObjectsAndPaint(
         inputBitmap: Bitmap,
         onBitmapChange: (Bitmap) -> Unit = {},
@@ -2005,7 +2006,6 @@ class MainActivity : ComponentActivity() {
 
         return paintDetectionResultsAndText(bitmap)
     }
-*/
 
     private fun outputsToNMSPredictions(outputs: FloatArray, imgScaleX: Float, imgScaleY: Float): List<Result> {
         val results = mutableListOf<Result>()
@@ -2021,7 +2021,7 @@ class MainActivity : ComponentActivity() {
 
             val score = prediction[4]
 
-            if (score > 0.3f) {
+            if (score > 0.5f) {
 
                 cumulativeScore += score
                 count += 1
